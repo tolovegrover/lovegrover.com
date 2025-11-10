@@ -1,0 +1,63 @@
+import { promises as fs } from 'fs'
+import path from 'path'
+import cn from 'clsx'
+import Link from 'next/link'
+
+export default async function Page(props: {
+  params: Promise<{
+    slug: string
+  }>
+}) {
+  const params = await props.params
+  const { default: MDXContent, metadata } = await import(
+    '../_articles/' + `${params.slug}.mdx`
+  )
+
+  const components = {
+    h1: (props: any) => (
+      <Link href='/stories' className='no-underline'>
+        <h1
+          className='font-semibold mb-7 text-rurikon-600 text-balance'
+          {...props}
+        />
+      </Link>
+    ),
+  }
+
+  return (
+    <div
+      className={cn(metadata.chinese && 'text-justify font-zh')}
+      lang={metadata.chinese ? 'zh-Hans' : 'en'}
+    >
+      <MDXContent components={components} />
+    </div>
+  )
+}
+
+export async function generateStaticParams() {
+  const articles = await fs.readdir(
+    path.join(process.cwd(), 'app', 'stories', '_articles')
+  )
+
+  return articles
+    .filter((name) => name.endsWith('.mdx'))
+    .map((name) => ({
+      params: {
+        slug: name.replace(/\.mdx$/, ''),
+      },
+    }))
+}
+
+export async function generateMetadata(props: {
+  params: Promise<{
+    slug: string
+  }>
+}) {
+  const params = await props.params
+  const metadata = (await import('../_articles/' + `${params.slug}.mdx`))
+    .metadata
+  return {
+    title: metadata.title,
+    description: metadata.description,
+  }
+}
