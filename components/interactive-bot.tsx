@@ -2,16 +2,47 @@
 
 import { useFluidMode } from './fluid-mode-context'
 import { useState, useEffect, useRef } from 'react'
-import { motion, useAnimation, PanInfo } from 'framer-motion'
+import { motion, useAnimation, PanInfo, useMotionValue, useTransform } from 'framer-motion'
 
 export default function InteractiveBot() {
     const { isFluidMode, toggleFluidMode, showDialog } = useFluidMode()
     const [emotion, setEmotion] = useState<'idle' | 'bored' | 'scared' | 'active'>('idle')
     const [isHovered, setIsHovered] = useState(false)
     const [isDragging, setIsDragging] = useState(false)
+    const [mousePos, setMousePos] = useState({ x: 0, y: 0 })
+    const [isBlinking, setIsBlinking] = useState(false)
+
     const controls = useAnimation()
     const idleTimerRef = useRef<NodeJS.Timeout | null>(null)
     const constraintsRef = useRef(null)
+    const botRef = useRef<HTMLDivElement>(null)
+
+    // Motion values for rolling
+    const x = useMotionValue(0)
+    const rotate = useTransform(x, (currentX) => currentX * 2.5) // Rotate based on X movement
+
+    // Track Mouse for Eyes
+    useEffect(() => {
+        const handleMouseMove = (e: MouseEvent) => {
+            setMousePos({ x: e.clientX, y: e.clientY })
+        }
+        window.addEventListener('mousemove', handleMouseMove)
+        return () => window.removeEventListener('mousemove', handleMouseMove)
+    }, [])
+
+    // Blinking Logic
+    useEffect(() => {
+        const blinkLoop = () => {
+            setIsBlinking(true)
+            setTimeout(() => setIsBlinking(false), 150)
+
+            // Random blink interval between 2s and 6s
+            const nextBlink = Math.random() * 4000 + 2000
+            setTimeout(blinkLoop, nextBlink)
+        }
+        const timeoutId = setTimeout(blinkLoop, 2000)
+        return () => clearTimeout(timeoutId)
+    }, [])
 
     // Reset idle timer on interaction
     const resetIdleTimer = () => {
@@ -41,34 +72,51 @@ export default function InteractiveBot() {
     const handleDragEnd = (event: MouseEvent | TouchEvent | PointerEvent, info: PanInfo) => {
         setIsDragging(false)
         resetIdleTimer()
-        // Snap back if not fluid mode? Or stay? Let's let it stay for fun, or snap back to navbar.
-        // For now, let's let it be free but maybe snap to a grid or just stay.
-        // Actually, to keep it accessible, let's snap it back to its original spot in the navbar layout
-        // by using layoutId or just letting framer motion handle the spring back if we don't update position state.
-        // If we want it to snap back, we just don't update any layout state.
     }
+
+    // Calculate Eye Movement
+    const getEyeOffset = () => {
+        if (!botRef.current) return { x: 0, y: 0 }
+        const rect = botRef.current.getBoundingClientRect()
+        const botX = rect.left + rect.width / 2
+        const botY = rect.top + rect.height / 2
+
+        const dx = mousePos.x - botX
+        const dy = mousePos.y - botY
+        const distance = Math.sqrt(dx * dx + dy * dy)
+
+        // Max eye movement radius
+        const maxOffset = 6 // Larger range for the big lens
+        const moveX = distance > 0 ? (dx / distance) * Math.min(distance / 15, maxOffset) : 0
+        const moveY = distance > 0 ? (dy / distance) * Math.min(distance / 15, maxOffset) : 0
+
+        return { x: moveX, y: moveY }
+    }
+
+    const eyeOffset = getEyeOffset()
 
     // Determine Bubble Text
     let bubbleText = ""
     if (showDialog) bubbleText = "uh oh..."
     else if (isFluidMode) bubbleText = "please deactivate me!"
     else if (isDragging) bubbleText = "wheeeee!"
-    else if (emotion === 'bored') bubbleText = "i'm bored..."
-    else if (isHovered) bubbleText = "don't touch me!"
+    else if (emotion === 'bored') bubbleText = "beep boop..."
+    else if (isHovered) bubbleText = "beep?"
 
     const showBubble = showDialog || isHovered || isDragging || emotion === 'bored'
 
     return (
-        <div className="relative flex items-center justify-center w-10 h-10">
+        <div className="relative flex items-center justify-center w-12 h-12">
             {/* Container to hold space in navbar */}
             {/* Invisible constraint boundary covering the viewport */}
             <div ref={constraintsRef} className="fixed inset-4 pointer-events-none z-0" />
 
             <motion.div
+                ref={botRef}
                 drag
                 dragConstraints={constraintsRef}
                 dragElastic={0.2}
-                whileDrag={{ scale: 1.2, cursor: 'grabbing' }}
+                whileDrag={{ scale: 1.1, cursor: 'grabbing' }}
                 onDragStart={handleDragStart}
                 onDragEnd={handleDragEnd}
                 onMouseEnter={() => {
@@ -77,15 +125,15 @@ export default function InteractiveBot() {
                 }}
                 onMouseLeave={() => setIsHovered(false)}
                 onClick={() => {
-                    // Only toggle if not dragging (simple check)
                     if (!isDragging) toggleFluidMode()
                 }}
                 className="relative z-50 cursor-grab touch-none"
+                style={{ x }} // Bind x motion value
                 animate={controls}
             >
                 {/* Speech Bubble */}
                 <div
-                    className={`absolute right-full mr-3 top-1/2 -translate-y-1/2 transition-all duration-300 ease-in-out origin-right pointer-events-none
+                    className={`absolute right-full mr-5 top-0 transition-all duration-300 ease-in-out origin-right pointer-events-none z-50
             ${showBubble ? 'opacity-100 scale-100' : 'opacity-0 scale-90'}
           `}
                 >
@@ -95,43 +143,55 @@ export default function InteractiveBot() {
                     </div>
                 </div>
 
-                {/* The Bot Body */}
-                <div
-                    className={`w-6 h-6 rounded-full transition-colors duration-300 flex items-center justify-center relative shadow-md
-            ${isFluidMode
-                            ? 'bg-red-500 shadow-[0_0_15px_rgba(239,68,68,0.8)]'
-                            : 'bg-rurikon-400 hover:bg-red-400'
-                        }
-          `}
+                {/* BB-8 Head (Floating) */}
+                <motion.div
+                    className="absolute -top-5 left-1/2 -translate-x-1/2 w-8 h-5 bg-white rounded-t-full border-2 border-b-0 border-gray-300 z-20 overflow-hidden shadow-sm"
+                    animate={{
+                        y: isDragging ? [0, -2, 0] : [0, -1, 0],
+                        rotate: isDragging ? (x.get() * 0.1) : 0 // Slight tilt when dragging
+                    }}
+                    transition={{
+                        y: { repeat: Infinity, duration: isDragging ? 0.2 : 2, ease: "easeInOut" }
+                    }}
                 >
-                    {/* Eyes */}
-                    <div className="flex gap-1">
+                    {/* Orange Head Stripes */}
+                    <div className="absolute top-1 w-full h-1 bg-orange-400 opacity-80"></div>
+
+                    {/* Main Lens (Eye) */}
+                    <div className="absolute top-1.5 left-1/2 -translate-x-1/2 w-3.5 h-3.5 bg-gray-800 rounded-full border-2 border-gray-300 flex items-center justify-center">
+                        {/* Inner Lens Reflection */}
                         <motion.div
-                            className="w-1 h-1 bg-white rounded-full"
-                            animate={{
-                                scaleY: emotion === 'bored' ? [1, 0.1, 1] : 1,
-                                height: emotion === 'scared' ? 6 : 4
-                            }}
-                            transition={{
-                                duration: emotion === 'bored' ? 2 : 0.2,
-                                repeat: emotion === 'bored' ? Infinity : 0,
-                                repeatDelay: 3
-                            }}
-                        />
-                        <motion.div
-                            className="w-1 h-1 bg-white rounded-full"
-                            animate={{
-                                scaleY: emotion === 'bored' ? [1, 0.1, 1] : 1,
-                                height: emotion === 'scared' ? 6 : 4
-                            }}
-                            transition={{
-                                duration: emotion === 'bored' ? 2 : 0.2,
-                                repeat: emotion === 'bored' ? Infinity : 0,
-                                repeatDelay: 3
-                            }}
-                        />
+                            className="w-1.5 h-1.5 bg-black rounded-full relative"
+                            animate={{ x: eyeOffset.x / 2, y: eyeOffset.y / 2 }} // Parallax effect
+                        >
+                            <div className="absolute top-0.5 right-0.5 w-0.5 h-0.5 bg-white rounded-full opacity-80"></div>
+                        </motion.div>
                     </div>
-                </div>
+
+                    {/* Small Lens */}
+                    <div className="absolute bottom-1 right-1 w-1.5 h-1.5 bg-gray-700 rounded-full border border-gray-400"></div>
+
+                    {/* Antenna */}
+                    <div className="absolute -top-3 right-2 w-0.5 h-3 bg-gray-400"></div>
+                </motion.div>
+
+                {/* BB-8 Body (Rolling) */}
+                <motion.div
+                    className={`w-10 h-10 rounded-full bg-white border-2 border-gray-300 relative shadow-md overflow-hidden
+            ${isFluidMode ? 'shadow-[0_0_20px_rgba(239,68,68,0.6)] border-red-400' : ''}
+          `}
+                    style={{ rotate }} // Rotate body based on movement
+                >
+                    {/* Orange Circle Patterns */}
+                    <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-6 h-6 rounded-full border-4 border-orange-400 opacity-90 flex items-center justify-center">
+                        <div className="w-2 h-2 bg-gray-300 rounded-full"></div>
+                    </div>
+
+                    {/* Side Details (to show rotation) */}
+                    <div className="absolute top-1 left-1 w-2 h-2 bg-gray-300 rounded-full"></div>
+                    <div className="absolute bottom-2 right-2 w-3 h-1 bg-orange-400 rounded-full"></div>
+                    <div className="absolute top-1/2 right-0 w-2 h-4 bg-gray-200 rounded-l-full"></div>
+                </motion.div>
             </motion.div>
         </div>
     )
