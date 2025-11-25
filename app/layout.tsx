@@ -38,8 +38,11 @@ export const metadata: Metadata = {
 
 export const viewport: Viewport = {
   maximumScale: 1,
-  colorScheme: 'only light',
-  themeColor: '#fcfcfc',
+  colorScheme: 'light dark',
+  themeColor: [
+    { media: '(prefers-color-scheme: light)', color: '#fcfcfc' },
+    { media: '(prefers-color-scheme: dark)', color: '#07080a' },
+  ],
 }
 
 export default function RootLayout({
@@ -61,7 +64,7 @@ export default function RootLayout({
         )}
       >
         <div className='fixed sm:hidden h-6 sm:h-10 md:h-14 w-full top-0 left-0 z-30 pointer-events-none content-fade-out' />
-        <div className='flex flex-col mobile:flex-row'>
+        <div className='flex flex-col mobile:flex-row mx-auto max-w-screen-lg justify-center'>
           <Navbar />
           <main className='relative flex-1 max-w-2xl [contain:inline-size]'>
             <div className='absolute w-full h-px opacity-50 bg-rurikon-border right-0 mobile:right-auto mobile:left-0 mobile:w-px mobile:h-full mobile:opacity-100 mix-blend-multiply' />

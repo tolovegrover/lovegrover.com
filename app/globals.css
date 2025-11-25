@@ -5,46 +5,54 @@
   .font-thin {
     font-variation-settings: 'wght' 100, var(--sans-variation);
   }
+
   .font-extralight {
     font-variation-settings: 'wght' 200, var(--sans-variation);
   }
+
   .font-light {
     font-variation-settings: 'wght' 300, var(--sans-variation);
   }
+
   .font-normal {
     font-variation-settings: 'wght' 440, var(--sans-variation);
   }
+
   .font-medium {
     font-variation-settings: 'wght' 500, var(--sans-variation);
   }
+
   .font-semibold {
     font-variation-settings: 'wght' 600, var(--sans-variation);
   }
+
   .font-bold {
     font-variation-settings: 'wght' 640, var(--sans-variation);
   }
+
   .font-extrabold {
     font-variation-settings: 'wght' 700, var(--sans-variation);
   }
+
   .font-black {
     font-variation-settings: 'wght' 800, var(--sans-variation);
   }
 }
 
 @theme {
-  --color-rurikon-50: #ebedef;
-  --color-rurikon-100: #d8dbdf;
-  --color-rurikon-200: #b3b9c1;
-  --color-rurikon-300: #8c95a1;
-  --color-rurikon-400: #697381;
-  --color-rurikon-500: #4a515b;
-  --color-rurikon-600: #3b4149;
-  --color-rurikon-700: #2b3035;
-  --color-rurikon-800: #1e2125;
-  --color-rurikon-900: #0e0f11;
-  --color-rurikon-950: #07080a;
+  --color-rurikon-50: var(--rurikon-50);
+  --color-rurikon-100: var(--rurikon-100);
+  --color-rurikon-200: var(--rurikon-200);
+  --color-rurikon-300: var(--rurikon-300);
+  --color-rurikon-400: var(--rurikon-400);
+  --color-rurikon-500: var(--rurikon-500);
+  --color-rurikon-600: var(--rurikon-600);
+  --color-rurikon-700: var(--rurikon-700);
+  --color-rurikon-800: var(--rurikon-800);
+  --color-rurikon-900: var(--rurikon-900);
+  --color-rurikon-950: var(--rurikon-950);
 
-  --color-rurikon-border: #d8dbdfb3;
+  --color-rurikon-border: var(--rurikon-border);
 
   --font-family-sans: var(--sans), -apple-system, ui-sans-serif, system-ui,
     sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol',
@@ -61,8 +69,43 @@
 }
 
 :root {
+  color-scheme: light dark;
+  --rurikon-50: #ebedef;
+  --rurikon-100: #d8dbdf;
+  --rurikon-200: #b3b9c1;
+  --rurikon-300: #8c95a1;
+  --rurikon-400: #697381;
+  --rurikon-500: #4a515b;
+  --rurikon-600: #3b4149;
+  --rurikon-700: #2b3035;
+  --rurikon-800: #1e2125;
+  --rurikon-900: #0e0f11;
+  --rurikon-950: #07080a;
+
+  --rurikon-border: #d8dbdfb3;
   --background: #fcfcfc;
 }
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --rurikon-50: #0e0f11;
+    --rurikon-100: #1e2125;
+    --rurikon-200: #2b3035;
+    --rurikon-300: #4a515b;
+    --rurikon-400: #697381;
+    --rurikon-500: #b3b9c1;
+    --rurikon-600: #d8dbdf;
+    --rurikon-700: #ebedef;
+    --rurikon-800: #fcfcfc;
+    --rurikon-900: #ffffff;
+    --rurikon-950: #ffffff;
+
+    --rurikon-border: #3b4149b3;
+    --background: #07080a;
+  }
+}
+
+
 
 :root {
   --sans-variation: 'opsz' 32;
@@ -114,6 +157,7 @@ del {
 blockquote {
   box-shadow: 1px 0 0 var(--color-rurikon-500) inset;
 }
+
 @media screen and (max-width: 420px) {
   blockquote {
     /* Make it wider on mobile with a lighter color */
@@ -121,7 +165,7 @@ blockquote {
   }
 }
 
-blockquote + blockquote {
+blockquote+blockquote {
   display: flow-root;
 }
 
@@ -186,46 +230,56 @@ article {
     margin-top: 1.75rem;
     line-height: 0;
   }
+
   .sidenote-content {
+
     img,
     video,
     pre {
       margin: 0;
     }
   }
+
   .no-padding {
     --frame-padding: 0;
   }
-  .framed > img, .framed > figure > span:first-child {
+
+  .framed>img,
+  .framed>figure>span:first-child {
     padding: var(--frame-padding, 0.875rem);
     background: var(--frame-background, #fff);
     border: 1px solid var(--color-rurikon-border);
   }
+
   iframe {
     width: 100%;
     border: 1px solid var(--color-rurikon-border);
     background-color: #fff;
   }
+
   details {
     margin-top: 1.75rem;
     padding: 0.5rem 0;
     border-top: 1px solid var(--color-rurikon-border);
     border-bottom: 1px solid var(--color-rurikon-border);
   }
+
   details summary {
     font-variation-settings: 'wght' 600, var(--sans-variation);
     margin-bottom: 0.25rem;
   }
+
   details summary::marker {
     content: '';
   }
+
   details p:first-of-type {
     margin-top: 0;
   }
 }
 
 .content-fade-out {
-  background: linear-gradient(180deg,  hsla(0, 0%, 100%, 1.00) 0%,  hsla(0, 0%, 100%, 0.63) 14%,  hsla(0, 0%, 100%, 0.36) 29%,  hsla(0, 0%, 100%, 0.19) 43%,  hsla(0, 0%, 100%, 0.08) 57%,  hsla(0, 0%, 100%, 0.02) 71%,  hsla(0, 0%, 100%, 0.00) 86%,  hsla(0, 0%, 100%, 0.00) 100%);
+  background: linear-gradient(180deg, var(--background) 0%, transparent 100%);
 }
 
 *::selection {
@@ -235,7 +289,8 @@ article {
 
 .dot-leaders {
   background-image: radial-gradient(circle, currentColor 1px, transparent 1px);
-  background-size: 8px 8px; /* Adjust dot size and spacing */
+  background-size: 8px 8px;
+  /* Adjust dot size and spacing */
   background-position-y: center;
   background-repeat: repeat-x;
 }
@@ -258,6 +313,7 @@ article {
     opacity: 1;
     filter: blur(0);
   }
+
   100% {
     opacity: 0;
     filter: blur(4px);
@@ -269,6 +325,7 @@ article {
     opacity: 0;
     filter: blur(4px);
   }
+
   100% {
     opacity: 1;
     filter: blur(0);

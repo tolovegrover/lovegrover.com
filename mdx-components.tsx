@@ -18,7 +18,7 @@ export const components: Record<
 > = {
   h1: (props) => (
     <h1
-      className='font-semibold mb-7 text-rurikon-600 text-balance'
+      className='font-semibold mb-7 mt-4 text-rurikon-600 text-balance'
       {...props}
     />
   ),
@@ -70,9 +70,9 @@ export const components: Record<
         draggable={false}
         {...(href?.startsWith('https://')
           ? {
-              target: '_blank',
-              rel: 'noopener noreferrer',
-            }
+            target: '_blank',
+            rel: 'noopener noreferrer',
+          }
           : {})}
         {...props}
       />

@@ -1,6 +1,6 @@
 import { promises as fs } from 'fs'
-import Link from 'next/link'
 import path from 'path'
+import StoryItem from '@/components/story-item'
 
 export const metadata = {
   title: 'Stories',
@@ -21,14 +21,18 @@ export default async function Page() {
   for (const article of articles) {
     if (!article.endsWith('.mdx')) continue
     const module = await import('./_articles/' + article)
+    const Content = module.default
 
     if (!module.metadata) throw new Error('Missing `metadata` in ' + article)
 
     items.push({
       slug: article.replace(/\.mdx$/, ''),
       title: module.metadata.title,
+      subtitle: module.metadata.subtitle,
+      author: module.metadata.author,
       date: module.metadata.date || '-',
       sort: Number(module.metadata.date?.replaceAll('.', '') || 0),
+      Content: Content,
     })
   }
   items.sort((a, b) => b.sort - a.sort)
@@ -37,16 +41,15 @@ export default async function Page() {
     <div>
       <ul>
         {items.map((item) => (
-          <li key={item.slug} className='font-medium'>
-            <Link
-              href={`/stories/${item.slug}`}
-              className='group flex gap-1 -mx-2 px-2 justify-between items-center focus-visible:outline focus-visible:outline-rurikon-400 focus-visible:rounded-xs focus-visible:outline-dotted focus-visible:text-rurikon-600'
-              draggable={false}
+          <li key={item.slug}>
+            <StoryItem
+              title={item.title}
+              subtitle={item.subtitle}
+              author={item.author}
+              date={item.date}
             >
-              <span className='block text-rurikon-500 group-hover:text-rurikon-700 group-focus-visible:text-rurikon-700'>
-                {item.title}
-              </span>
-            </Link>
+              <item.Content />
+            </StoryItem>
           </li>
         ))}
       </ul>
