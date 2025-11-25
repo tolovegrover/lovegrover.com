@@ -4,6 +4,8 @@ import cn from 'clsx'
 import { usePathname } from 'next/navigation'
 import Link from 'next/link'
 
+import InteractiveBot from './interactive-bot'
+
 function Item(props: React.ComponentProps<typeof Link>) {
   const pathname = usePathname()
   const href = props.href
@@ -44,7 +46,9 @@ export default function Navbar() {
         <Item href='/research'>Research</Item>
         <Item href='/stories'>Stories</Item>
         <Item href='/cv'>CV</Item>
-        {/* <Item href='/guestbook'>Guestbook</Item> */}
+        <li className='-mx-2 px-2 flex justify-end items-center h-full pt-1 mobile:pt-2'>
+          <InteractiveBot />
+        </li>
       </ul>
     </nav>
   )

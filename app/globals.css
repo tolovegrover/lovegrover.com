@@ -105,6 +105,45 @@
   }
 }
 
+/* Force Light Theme Override */
+/* Force Light Theme Override */
+html.force-light {
+  --rurikon-50: #ebedef;
+  --rurikon-100: #000000;
+  /* Force black */
+  --rurikon-200: #000000;
+  /* Force black */
+  --rurikon-300: #000000;
+  /* Force black */
+  --rurikon-400: #000000;
+  /* Force black */
+  --rurikon-500: #000000;
+  /* Force black */
+  --rurikon-600: #000000;
+  /* Force black */
+  --rurikon-700: #000000;
+  /* Force black */
+  --rurikon-800: #000000;
+  /* Force black */
+  --rurikon-900: #0e0f11;
+  --rurikon-950: #07080a;
+
+  --rurikon-border: #000000;
+  /* Force black border */
+  --background: #fcfcfc;
+  color: #000000 !important;
+  /* Force black text globally */
+}
+
+/* Smooth Transitions */
+body {
+  transition: background-color 1s ease, color 1s ease;
+}
+
+html.force-light * {
+  transition: background-color 1s ease, color 1s ease, border-color 1s ease;
+}
+
 
 
 :root {
@@ -348,4 +387,9 @@ article {
 
 .no-underline {
   text-decoration: none;
+}
+
+/* Fluid Mode Styles */
+.fluid-mode-active {
+  /* No text stroke as requested */
 }

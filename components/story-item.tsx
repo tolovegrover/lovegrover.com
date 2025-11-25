@@ -31,7 +31,7 @@ export default function StoryItem({
                     </span>
                 </div>
                 {subtitle && (
-                    <div className="text-sm text-gray-500 mt-1">
+                    <div className="text-sm text-rurikon-400 mt-1">
                         <em>
                             {subtitle} {author && <span> - {author}</span>}
                         </em>
@@ -43,7 +43,7 @@ export default function StoryItem({
                 className={`transition-all duration-300 ease-in-out overflow-hidden ${isOpen ? 'max-h-96' : 'max-h-0'
                     }`}
             >
-                <div className="border-l-2 border-gray-200 pl-4 mt-2 pt-2 pb-2 text-justify">
+                <div className="border-l-2 border-rurikon-100 pl-4 mt-2 pt-2 pb-2 text-justify">
                     {children}
                 </div>
             </div>
