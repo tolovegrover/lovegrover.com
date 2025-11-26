@@ -950,6 +950,7 @@ export default function InteractiveBot() {
                                     }
 
                                     // Move to the exact word position
+                                    const range = wordRanges[wordIndex]
                                     const rect = range.getBoundingClientRect()
                                     targetPos.current = {
                                         x: rect.left + rect.width / 2,
