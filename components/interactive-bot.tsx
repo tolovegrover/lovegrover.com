@@ -1,12 +1,15 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
-import { motion, useMotionValue, useTransform, useAnimationFrame, PanInfo, useSpring } from 'framer-motion'
+import { usePathname } from 'next/navigation'
+import { motion, useMotionValue, useTransform, useAnimationFrame, PanInfo, useSpring, useAnimation, AnimatePresence } from 'framer-motion'
+import FluidSimulation from './fluid-simulation'
 import ChargingDock from './charging-dock'
 
-type BotState = 'IDLE' | 'ROAMING' | 'INVESTIGATING' | 'SEEKING_DOCK' | 'CHARGING' | 'DRAGGING' | 'DEAD' | 'READING' | 'WAITING_FOR_EXPAND' | 'DIZZY' | 'SEEKING_JAIL' | 'JAILED'
+type BotState = 'IDLE' | 'ROAMING' | 'INVESTIGATING' | 'SEEKING_DOCK' | 'CHARGING' | 'DRAGGING' | 'DEAD' | 'READING' | 'WAITING_FOR_EXPAND' | 'DIZZY' | 'SEEKING_JAIL' | 'JAILED' | 'CHAOS' | 'SCARED'
 
 export default function InteractiveBot() {
+    const pathname = usePathname()
     const [isMounted, setIsMounted] = useState(false)
     const [mousePos, setMousePos] = useState({ x: 0, y: 0 })
     const [botState, setBotState] = useState<BotState>('IDLE')
@@ -14,7 +17,7 @@ export default function InteractiveBot() {
     const [speech, setSpeech] = useState<string | null>(null)
     const [scanProgress, setScanProgress] = useState(0)
     const [isBlinking, setIsBlinking] = useState(false)
-    const [expression, setExpression] = useState<'neutral' | 'happy' | 'sad' | 'squint' | 'bored' | 'amused' | 'sleeping' | 'dizzy'>('neutral')
+    const [expression, setExpression] = useState<'neutral' | 'happy' | 'sad' | 'squint' | 'bored' | 'amused' | 'sleeping' | 'dizzy' | 'angry' | 'scared'>('neutral')
     const [isJailed, setIsJailed] = useState(false)
 
     // --- CONSTANTS ---
@@ -55,7 +58,8 @@ export default function InteractiveBot() {
         'cv': ["Curriculum Vitae.", "Experience detected.", "Career path.", "Credentials found.", "Resume scanning."],
         'research-page': ["More science!", "To the lab!", "Research index.", "Hypotheses ahead.", "Data archive."],
         'stories-page': ["Story time!", "Narratives detected.", "Fiction or fact?", "Reading list.", "Library found."],
-        'story': ["A story!", "Reading time.", "Chapter one...", "Once upon a time.", "Narrative found."]
+        'story': ["A story!", "Reading time.", "Chapter one...", "Once upon a time.", "Narrative found."],
+        'chaos': ["Do not press!", "Danger!", "Chaos button...", "Entropy detected.", "Red button?"]
     }
 
     // Physics State
@@ -188,16 +192,21 @@ export default function InteractiveBot() {
 
             // Jail Logic
             if (isJailedRef.current) {
+                // Always enforce SEEKING_JAIL if not already there or jailed
                 if (currentState !== 'JAILED' && currentState !== 'SEEKING_JAIL' && currentState !== 'DRAGGING') {
                     setBotState('SEEKING_JAIL')
                     setSpeech("Going to jail...")
+                    lookTarget.current = null // Stop looking at other things
+                }
 
-                    // IMMEDIATE OVERRIDE: Force target to jail instantly
+                // CONTINUOUSLY set target to jail center if seeking
+                // This ensures it doesn't get lost or stuck
+                if (currentState === 'SEEKING_JAIL' || (isJailedRef.current && currentState !== 'JAILED' && currentState !== 'DRAGGING')) {
                     const jailCenterX = JAIL_COORDS.left + (JAIL_SIZE / 2)
                     const jailCenterY = window.innerHeight - JAIL_COORDS.bottom - (JAIL_SIZE / 2)
                     targetPos.current = { x: jailCenterX, y: jailCenterY }
-                    lookTarget.current = null // Stop looking at other things
                 }
+
                 // If jailed, stay jailed.
                 // If seeking jail, continue.
                 // If dragging, allow it but it will return to jail on release.
@@ -257,6 +266,17 @@ export default function InteractiveBot() {
                 return
             }
 
+            // Random Emotional Shifts during movement
+            if (currentState === 'ROAMING' || currentState === 'INVESTIGATING') {
+                if (Math.random() < 0.02) { // 2% chance per tick
+                    const emotions: ('happy' | 'bored' | 'amused' | 'squint')[] = ['happy', 'bored', 'amused', 'squint']
+                    const randomEmotion = emotions[Math.floor(Math.random() * emotions.length)]
+                    setExpression(randomEmotion)
+                }
+            }
+
+            // CHAOS MODE TRIGGER (Removed Random Trigger)
+
             // Idle Behaviors (Random Expressions)
             if (currentState === 'IDLE') {
                 if (Math.random() < 0.05) {
@@ -281,7 +301,7 @@ export default function InteractiveBot() {
                     const marginTop = 0
                     const marginLeft = 0
                     const marginRight = 0
-                    const marginBottom = 80
+                    const marginBottom = 20
                     const botSize = 32
 
                     // Biased Roaming Logic (Don't get stuck on edges)
@@ -332,35 +352,55 @@ export default function InteractiveBot() {
                     })
 
                     if (links.length > 0) {
-                        // Weighted Selection: Tiered Priority
-                        // Tier 1: Super Priority (Papers, Purushartha) - 50% chance
-                        // Tier 2: Priority (Nav, About, CV, Stories) - 30% chance
-                        // Tier 3: Regular - 20% chance
+                        // Weighted Selection: Context Aware
+                        const isStoriesPage = pathname?.includes('/stories')
 
-                        const superPriorityLinks = links.filter(l => {
-                            const p = l.getAttribute('data-bot-priority')
-                            return p === 'paper' || p === 'purushartha'
-                        })
+                        const chaosLinks = links.filter(l => l.getAttribute('data-bot-priority') === 'chaos')
+                        const purusharthaLinks = links.filter(l => l.getAttribute('data-bot-priority') === 'purushartha')
+                        const paperLinks = links.filter(l => l.getAttribute('data-bot-priority') === 'paper')
                         const priorityLinks = links.filter(l => {
                             const p = l.getAttribute('data-bot-priority')
-                            return p && p !== 'paper' && p !== 'purushartha'
+                            return p && p !== 'paper' && p !== 'purushartha' && p !== 'chaos'
                         })
                         const regularLinks = links.filter(l => !l.getAttribute('data-bot-priority'))
 
                         let pool = links
                         const rand = Math.random()
 
-                        if (superPriorityLinks.length > 0 && rand < 0.5) {
-                            pool = superPriorityLinks
-                        } else if (priorityLinks.length > 0 && rand < 0.8) {
-                            pool = priorityLinks
-                        } else if (regularLinks.length > 0) {
-                            pool = regularLinks
-                        } else if (superPriorityLinks.length > 0) {
-                            pool = superPriorityLinks // Fallback to super priority if regular is empty
-                        } else if (priorityLinks.length > 0) {
-                            pool = priorityLinks // Fallback
+                        if (isStoriesPage) {
+                            // STORIES PAGE LOGIC
+                            // 80% Purushartha
+                            // 10% Chaos
+                            // 10% Others
+                            if (purusharthaLinks.length > 0 && rand < 0.8) {
+                                pool = purusharthaLinks
+                            } else if (chaosLinks.length > 0 && rand < 0.9) {
+                                pool = chaosLinks
+                            } else {
+                                // Remaining 10% distributed among others
+                                pool = [...paperLinks, ...priorityLinks, ...regularLinks]
+                                if (pool.length === 0) pool = links // Fallback
+                            }
+                        } else {
+                            // NORMAL LOGIC
+                            // 25% Chaos (Increased)
+                            // 40% Papers/Purushartha
+                            // 25% Other Priority
+                            // 10% Regular
+                            if (chaosLinks.length > 0 && rand < 0.15) {
+                                pool = chaosLinks
+                            } else if ((paperLinks.length > 0 || purusharthaLinks.length > 0) && rand < 0.65) {
+                                pool = [...paperLinks, ...purusharthaLinks]
+                            } else if (priorityLinks.length > 0 && rand < 0.90) {
+                                pool = priorityLinks
+                            } else {
+                                pool = regularLinks
+                                if (pool.length === 0) pool = links // Fallback
+                            }
                         }
+
+                        // Safety fallback if selected pool is empty
+                        if (pool.length === 0) pool = links
 
                         targetLink = pool[Math.floor(Math.random() * pool.length)]
 
@@ -410,6 +450,7 @@ export default function InteractiveBot() {
                             else if (priorityType === 'research-page') comments = LINK_COMMENTS['research-page']
                             else if (priorityType === 'stories-page') comments = LINK_COMMENTS['stories-page']
                             else if (priorityType === 'story') comments = LINK_COMMENTS.story
+                            else if (priorityType === 'chaos') comments = LINK_COMMENTS.chaos
                             currentPriorityItem.current = priorityType
                         } else {
                             if (targetLink.tagName === 'BUTTON') comments = LINK_COMMENTS.button
@@ -431,7 +472,7 @@ export default function InteractiveBot() {
                         const marginTop = 0
                         const marginLeft = 0
                         const marginRight = 0
-                        const marginBottom = 80
+                        const marginBottom = 20
                         const botSize = 32
 
                         let targetX = rect.left + rect.width / 2 - 16
@@ -715,7 +756,7 @@ export default function InteractiveBot() {
                 if (currentX < repulsionMargin) velocity.current.x += repulsionForce
                 if (currentX > window.innerWidth - repulsionMargin) velocity.current.x -= repulsionForce
                 if (currentY < repulsionMargin) velocity.current.y += repulsionForce
-                if (currentY > window.innerHeight - repulsionMargin - 80) velocity.current.y -= repulsionForce // Extra for bottom dock area
+                if (currentY > window.innerHeight - repulsionMargin - 20) velocity.current.y -= repulsionForce
             }
 
             if ((currentState === 'ROAMING' || currentState === 'INVESTIGATING' || currentState === 'SEEKING_DOCK' || currentState === 'READING' || currentState === 'SEEKING_JAIL') && targetPos.current) {
@@ -743,6 +784,18 @@ export default function InteractiveBot() {
                 // Just hover in place or look at the target
                 velocity.current.x *= 0.8
                 velocity.current.y *= 0.8
+            } else if (currentState === 'SCARED') {
+                // Shiver in place
+                velocity.current = { x: (Math.random() - 0.5) * 10, y: (Math.random() - 0.5) * 10 }
+            } else if (currentState === 'CHAOS') {
+                // ERRATIC MOVEMENT
+                if (Math.random() < 0.1) {
+                    velocity.current.x += (Math.random() - 0.5) * 5
+                    velocity.current.y += (Math.random() - 0.5) * 5
+                }
+                // High speed cap
+                velocity.current.x = Math.max(-15, Math.min(15, velocity.current.x))
+                velocity.current.y = Math.max(-15, Math.min(15, velocity.current.y))
             }
 
             // Apply Velocity
@@ -794,7 +847,7 @@ export default function InteractiveBot() {
                 const marginTop = 0
                 const marginLeft = 0
                 const marginRight = 0
-                const marginBottom = 80 // Keep well above bottom edge
+                const marginBottom = 20 // Allow reaching bottom buttons
 
                 // Clamp X with margin
                 if (currentX < marginLeft) {
@@ -996,7 +1049,9 @@ export default function InteractiveBot() {
     if (!isMounted) return null
 
     // Eye Color based on state
-    const eyeColor = botState === 'CHARGING' ? 'bg-green-500' : (battery < 20 ? 'bg-red-500' : 'bg-black')
+    const eyeColor = (botState === 'CHAOS' || expression === 'angry') ? 'bg-red-500 shadow-[0_0_10px_rgba(239,68,68,0.8)]' :
+        (botState === 'SCARED' || expression === 'scared' ? 'bg-cyan-200 shadow-[0_0_10px_rgba(165,243,252,0.8)]' :
+            (botState === 'CHARGING' ? 'bg-green-500' : (battery < 20 ? 'bg-red-500' : 'bg-black')))
     // Petting Logic
 
     const handlePettingMove = (e: React.MouseEvent) => {
@@ -1039,6 +1094,21 @@ export default function InteractiveBot() {
 
     return (
         <>
+            {/* Chaos/Fluid Background */}
+            <AnimatePresence>
+                {(botState === 'CHAOS' || botState === 'SCARED') && (
+                    <motion.div
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        transition={{ duration: 2, delay: 1 }} // Wait 1s, then fade in over 2s. Exit fades out over 2s (default or inherited)
+                        className="fixed inset-0 z-[-1]"
+                    >
+                        <FluidSimulation speed={botState === 'CHAOS' ? 1 : 0.5} preWarm={6000} />
+                    </motion.div>
+                )}
+            </AnimatePresence>
+
             <ChargingDock />
 
             {/* Jail / Cage Visuals - Absolute Positioning */}
@@ -1071,44 +1141,80 @@ export default function InteractiveBot() {
                 </motion.div>
             </div>
 
-            {/* Jail Button (Lock) - Absolute Positioning */}
-            <button
-                onClick={() => {
-                    const newJailed = !isJailed
-                    setIsJailed(newJailed)
-                    if (newJailed) {
-                        setBotState('SEEKING_JAIL')
-                        setSpeech("Oh no! Jail time!")
-                    } else {
-                        // Freedom Logic!
-                        setBotState('ROAMING')
-                        setExpression('happy')
-                        setSpeech("Freedom!")
-                        // Burst away
-                        velocity.current = { x: 8, y: -8 }
-                        setTimeout(() => setSpeech(null), 2000)
-                    }
-                }}
-                className={`fixed z-50 p-2 rounded-full transition-all duration-300 ${isJailed
-                    ? 'bg-red-500 text-white shadow-[0_0_15px_rgba(239,68,68,0.6)] scale-110'
-                    : 'bg-white/10 text-gray-400 hover:text-white hover:bg-white/20 backdrop-blur-md border border-white/20'
-                    }`}
-                style={{
-                    bottom: LOCK_BUTTON_POS.bottom,
-                    left: LOCK_BUTTON_POS.left
-                }}
-                title={isJailed ? "Unlock Bot" : "Lock Bot"}
-            >
-                {isJailed ? (
-                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-6 h-6">
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 1 0-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 0 0 2.25-2.25v-6.75a2.25 2.25 0 0 0-2.25-2.25H6.75a2.25 2.25 0 0 0-2.25 2.25v6.75a2.25 2.25 0 0 0 2.25 2.25Z" />
+            {/* Control Buttons Container - Bottom Center - Subtle & Organic */}
+            <div className="fixed bottom-0 pb-4 left-1/2 -translate-x-1/2 flex gap-4 z-50">
+                {/* Lock/Unlock Button */}
+                <button
+                    onClick={() => {
+                        const newJailed = !isJailed
+                        setIsJailed(newJailed)
+                        if (newJailed) {
+                            // LOCKING
+                            setBotState('SEEKING_JAIL')
+                            setSpeech("Oh no! Jail time!")
+                        } else {
+                            // UNLOCKING -> FREEDOM (No Chaos)
+                            setBotState('ROAMING')
+                            setExpression('happy')
+                            setSpeech("Freedom!")
+                            velocity.current = { x: 5, y: -5 }
+                            setTimeout(() => setSpeech(null), 2000)
+                        }
+                    }}
+                    className={`p-3 rounded-full transition-all duration-300 shadow-sm hover:shadow-md active:scale-95 backdrop-blur-sm ${isJailed
+                        ? 'bg-red-600 text-white border-transparent'
+                        : 'bg-black/80 text-white border-transparent hover:bg-black dark:bg-white/80 dark:text-black dark:hover:bg-white'
+                        }`}
+                    title={isJailed ? "Unlock Bot" : "Lock Bot"}
+                >
+                    {isJailed ? (
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 1 0-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 0 0 2.25-2.25v-6.75a2.25 2.25 0 0 0-2.25-2.25H6.75a2.25 2.25 0 0 0-2.25 2.25v6.75a2.25 2.25 0 0 0 2.25 2.25Z" />
+                        </svg>
+                    ) : (
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 10.5V6.75a4.5 4.5 0 1 1 9 0v3.75M3.75 21.75h10.5a2.25 2.25 0 0 0 2.25-2.25v-6.75a2.25 2.25 0 0 0-2.25-2.25H3.75a2.25 2.25 0 0 0-2.25 2.25v6.75a2.25 2.25 0 0 0 2.25 2.25Z" />
+                        </svg>
+                    )}
+                </button>
+
+                {/* Fluid Button */}
+                <button
+                    data-bot-priority="chaos"
+                    onClick={() => {
+                        // Trigger Scared -> Chaos Sequence
+                        setBotState('SCARED')
+                        setExpression('scared')
+                        setSpeech("What's that sound?!")
+
+                        // After 2s -> Chaos
+                        setTimeout(() => {
+                            if (botStateRef.current === 'SCARED') {
+                                setBotState('CHAOS')
+                                setExpression('angry')
+                                setSpeech("AAHHH! CHAOS!")
+                                velocity.current = { x: (Math.random() - 0.5) * 20, y: (Math.random() - 0.5) * 20 }
+
+                                // After 8s -> Idle
+                                setTimeout(() => {
+                                    if (botStateRef.current === 'CHAOS') {
+                                        setBotState('IDLE')
+                                        setExpression('neutral')
+                                        setSpeech("Whoa... that was intense!")
+                                        setTimeout(() => setSpeech(null), 3000)
+                                    }
+                                }, 8000)
+                            }
+                        }, 2000)
+                    }}
+                    className="p-3 bg-black/80 text-white border-transparent rounded-full shadow-sm hover:bg-black hover:shadow-md transition-all active:scale-95 backdrop-blur-sm dark:bg-white/80 dark:text-black dark:hover:bg-white"
+                    title="Unleash Fluid"
+                >
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 13.5l10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75z" />
                     </svg>
-                ) : (
-                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6">
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 10.5V6.75a4.5 4.5 0 1 1 9 0v3.75M3.75 21.75h10.5a2.25 2.25 0 0 0 2.25-2.25v-6.75a2.25 2.25 0 0 0-2.25-2.25H3.75a2.25 2.25 0 0 0-2.25 2.25v6.75a2.25 2.25 0 0 0 2.25 2.25Z" />
-                    </svg>
-                )}
-            </button>
+                </button>
+            </div>
             <motion.div
                 drag
                 dragMomentum={false}
@@ -1312,8 +1418,11 @@ export default function InteractiveBot() {
                                     height: expression === 'squint' ? '40%' :
                                         (expression === 'sad' ? '30%' :
                                             (expression === 'bored' ? '40%' :
-                                                (expression === 'amused' ? '0%' : '10%')))
+                                                (expression === 'amused' ? '0%' :
+                                                    (expression === 'angry' ? '30%' :
+                                                        (expression === 'scared' ? '0%' : '10%')))))
                                 }}
+                                style={{ rotate: expression === 'angry' ? 15 : (expression === 'scared' ? -10 : 0) }} // Angry brow tilt
                             />
                             <motion.div
                                 className="absolute bottom-0 left-0 w-full bg-gray-100 z-30"
@@ -1321,8 +1430,11 @@ export default function InteractiveBot() {
                                     height: expression === 'squint' ? '40%' :
                                         (expression === 'happy' ? '30%' :
                                             (expression === 'amused' ? '30%' :
-                                                (expression === 'bored' ? '0%' : '10%')))
+                                                (expression === 'bored' ? '0%' :
+                                                    (expression === 'angry' ? '20%' :
+                                                        (expression === 'scared' ? '0%' : '10%')))))
                                 }}
+                                style={{ rotate: expression === 'angry' ? -15 : (expression === 'scared' ? 10 : 0) }} // Angry brow tilt
                             />
                         </div>
 

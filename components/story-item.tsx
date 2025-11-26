@@ -32,14 +32,14 @@ export default function StoryItem({
                         <strong>{title}</strong>
                     </span>
                 </div>
-                {subtitle && (
-                    <div className="text-sm text-rurikon-400 mt-1">
-                        <em>
-                            {subtitle} {author && <span> - {author}</span>}
-                        </em>
-                    </div>
-                )}
             </div>
+            {subtitle && (
+                <div className="text-sm text-rurikon-400 mt-1">
+                    <em>
+                        {subtitle} {author && <span> - {author}</span>}
+                    </em>
+                </div>
+            )}
 
             <div
                 className={`transition-all duration-300 ease-in-out overflow-hidden ${isOpen ? 'max-h-[2000px]' : 'max-h-0'

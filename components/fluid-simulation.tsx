@@ -5,7 +5,7 @@ import { Canvas, useFrame, useThree } from '@react-three/fiber'
 import { useFBO } from '@react-three/drei'
 import * as THREE from 'three'
 
-// Obstacle type definition
+// Obstacle type definition (Point)
 type Obstacle = {
     x: number
     y: number
@@ -15,8 +15,12 @@ type Obstacle = {
 }
 
 const MAX_OBSTACLES = 20
+const FLOATS_PER_OBSTACLE = 3 // x, y, strength
+// We will pack into vec3 array:
+// Slot 1: x, y, angle
+// Slot 2: radius, concavity, strength
 
-const FluidSimulationScene = ({ speed }: { speed: number }) => {
+function SimulationScene({ speed, preWarm }: { speed: number, preWarm: number }) {
     const { gl, viewport } = useThree()
 
     // Create render targets for ping-pong with RepeatWrapping for periodic boundaries
@@ -26,14 +30,14 @@ const FluidSimulationScene = ({ speed }: { speed: number }) => {
             magFilter: THREE.LinearFilter,
             type: THREE.FloatType,
             wrapS: THREE.RepeatWrapping,
-            wrapT: THREE.ClampToEdgeWrapping,
+            wrapT: THREE.RepeatWrapping, // Infinite vertical flow
         }),
         useFBO(512, 512, {
             minFilter: THREE.LinearFilter,
             magFilter: THREE.LinearFilter,
             type: THREE.FloatType,
             wrapS: THREE.RepeatWrapping,
-            wrapT: THREE.ClampToEdgeWrapping,
+            wrapT: THREE.RepeatWrapping,
         })
     ])
 
@@ -43,14 +47,14 @@ const FluidSimulationScene = ({ speed }: { speed: number }) => {
             magFilter: THREE.LinearFilter,
             type: THREE.FloatType,
             wrapS: THREE.RepeatWrapping,
-            wrapT: THREE.ClampToEdgeWrapping,
+            wrapT: THREE.RepeatWrapping,
         }),
         useFBO(512, 512, {
             minFilter: THREE.LinearFilter,
             magFilter: THREE.LinearFilter,
             type: THREE.FloatType,
             wrapS: THREE.RepeatWrapping,
-            wrapT: THREE.ClampToEdgeWrapping,
+            wrapT: THREE.RepeatWrapping,
         })
     ])
 
@@ -64,7 +68,57 @@ const FluidSimulationScene = ({ speed }: { speed: number }) => {
     const obstacleData = useMemo(() => new Float32Array(MAX_OBSTACLES * 3), [])
     const obstacleCount = useRef(0)
 
-    // Initialization Shader (Draws stripes)
+    // Helper to update obstacles
+    const updateObstacles = () => {
+        const targetCount = 12
+        const spawnRate = 0.05 // Probability per frame
+
+        // Spawn new obstacles
+        if (obstacles.current.length < targetCount && Math.random() < spawnRate) {
+            obstacles.current.push({
+                x: 0.2 + Math.random() * 0.6, // Spawn in middle area
+                y: 0.1 + Math.random() * 0.8,
+                strength: 0.0,
+                age: 0,
+                lifetime: 800 + Math.random() * 400 // Frames
+            })
+        }
+
+        // Update obstacles
+        for (let i = obstacles.current.length - 1; i >= 0; i--) {
+            const obs = obstacles.current[i]
+            obs.age++
+
+            // Fade In / Fade Out Logic
+            const fadeTime = 100
+            if (obs.age < fadeTime) {
+                obs.strength = obs.age / fadeTime // 0 -> 1
+            } else if (obs.age > obs.lifetime - fadeTime) {
+                obs.strength = (obs.lifetime - obs.age) / fadeTime // 1 -> 0
+            } else {
+                obs.strength = 1.0
+            }
+
+            if (obs.age >= obs.lifetime) {
+                obstacles.current.splice(i, 1)
+            }
+        }
+
+        // Pack obstacle data for shader
+        obstacleCount.current = obstacles.current.length
+        for (let i = 0; i < MAX_OBSTACLES; i++) {
+            if (i < obstacles.current.length) {
+                const obs = obstacles.current[i]
+                obstacleData[i * 3] = obs.x
+                obstacleData[i * 3 + 1] = obs.y
+                obstacleData[i * 3 + 2] = obs.strength
+            } else {
+                obstacleData[i * 3 + 2] = 0 // Zero strength for unused
+            }
+        }
+    }
+
+    // Initialization Shader (Draws SPECTRUM stripes)
     const initMaterial = useMemo(() => {
         return new THREE.ShaderMaterial({
             uniforms: {
@@ -87,13 +141,18 @@ const FluidSimulationScene = ({ speed }: { speed: number }) => {
         }
 
         void main() {
-          // Create horizontal stripes
-          float layers = 8.0;
+          // Create 10 horizontal stripes with SMOOTH SPECTRUM
+          float layers = 10.0;
           float layerIndex = floor(vUv.y * layers);
+          
+          // Smooth spectrum: Adjacent layers are close in hue
+          // But 1 and 10 are far apart
           float hue = layerIndex / layers;
           
-          // Add some variation
-          vec3 color = hsv2rgb(vec3(hue, 1.0, 1.0)); // Max saturation and value
+          // Add slight variation/noise
+          hue += sin(vUv.x * 10.0) * 0.02;
+          
+          vec3 color = hsv2rgb(vec3(hue, 0.8, 0.9)); 
           
           gl_FragColor = vec4(color, 1.0);
         }
@@ -106,6 +165,7 @@ const FluidSimulationScene = ({ speed }: { speed: number }) => {
         return new THREE.ShaderMaterial({
             uniforms: {
                 velocityField: { value: null },
+                dyeField: { value: null },
                 resolution: { value: new THREE.Vector2(512, 512) },
                 obstacles: { value: obstacleData },
                 obstacleCount: { value: 0 },
@@ -119,6 +179,7 @@ const FluidSimulationScene = ({ speed }: { speed: number }) => {
       `,
             fragmentShader: `
         uniform sampler2D velocityField;
+        uniform sampler2D dyeField;
         uniform vec2 resolution;
         uniform float obstacleCount;
         uniform vec3 obstacles[${MAX_OBSTACLES}]; // x, y, strength
@@ -154,8 +215,8 @@ const FluidSimulationScene = ({ speed }: { speed: number }) => {
           vec2 uvHistory = uv - dt * fluidData.xy * stepSize;
           fluidData.xyw = texture2D(velocityField, uvHistory).xyw;
 
-          // Constant Flow Force (Left to Right) - TURBO SPEED
-          vec2 extForce = vec2(0.015, 0.0);
+          // Constant Flow Force (Left to Right) - TRIPLED SPEED
+          vec2 extForce = vec2(0.025, 0.0);
 
           // Apply Obstacle Forces (Invisible Deflectors)
           for(int i = 0; i < ${MAX_OBSTACLES}; i++) {
@@ -167,19 +228,19 @@ const FluidSimulationScene = ({ speed }: { speed: number }) => {
             float radius = 0.05; // Fixed radius of influence
             
             if (dist < radius) {
-                // Radial repulsion force
-                float force = (1.0 - dist / radius) * obs.z * 0.05; // Increased repulsion
+                // Radial repulsion force - INCREASED STRENGTH
+                float force = (1.0 - dist / radius) * obs.z * 0.05; 
                 extForce += normalize(dir) * force;
             }
           }
 
           fluidData.xy += dt * (viscosityForce - densityInvariance + extForce);
-          fluidData.xy = max(vec2(0.0), abs(fluidData.xy) - 1e-5) * sign(fluidData.xy); // Lower decay for more chaos
+          fluidData.xy = max(vec2(0.0), abs(fluidData.xy) - 1e-4) * sign(fluidData.xy); // Decay
 
           fluidData.w = (fd.x - ft.x + fr.y - fl.y);
           vec2 vorticity = vec2(abs(ft.w) - abs(fd.w), abs(fl.w) - abs(fr.w));
           vorticity *= vorticityThreshold / (length(vorticity) + 1e-5) * fluidData.w;
-          fluidData.xy += vorticity * 2.0; // Double vorticity for swirls
+          fluidData.xy += vorticity;
 
           fluidData.y *= smoothstep(0.5, 0.48, abs(uv.y - 0.5));
           
@@ -218,7 +279,7 @@ const FluidSimulationScene = ({ speed }: { speed: number }) => {
           vec2 stepSize = 1.0 / resolution;
           vec4 vel = texture2D(velocityField, uv);
           vec4 col = texture2D(dyeField, uv - 0.1 * vel.xy * stepSize * 3.0); // Advection
-
+          
           // No obstacle drawing here - they are invisible!
           
           gl_FragColor = col;
@@ -267,6 +328,34 @@ const FluidSimulationScene = ({ speed }: { speed: number }) => {
             gl.setRenderTarget(dyeFBOs.current[1])
             gl.render(quad, camera)
             initialized.current = true
+
+            // Pre-warm
+            const iterations = preWarm || 50
+            for (let i = 0; i < iterations; i++) {
+                // Update obstacles during pre-warm!
+                updateObstacles()
+
+                const readVelocity = velocityFBOs.current[velocityIndex.current]
+                const writeVelocity = velocityFBOs.current[(velocityIndex.current + 1) % 2]
+                const readDyeForVelocity = dyeFBOs.current[dyeIndex.current]
+
+                fluidMaterial.uniforms.velocityField.value = readVelocity.texture
+                fluidMaterial.uniforms.dyeField.value = readDyeForVelocity.texture
+                fluidMaterial.uniforms.obstacleCount.value = obstacleCount.current // Use actual count!
+                quad.material = fluidMaterial
+                gl.setRenderTarget(writeVelocity)
+                gl.render(quad, camera)
+                velocityIndex.current = (velocityIndex.current + 1) % 2
+
+                const readDyeForUpdate = dyeFBOs.current[dyeIndex.current]
+                const writeDyeForUpdate = dyeFBOs.current[(dyeIndex.current + 1) % 2]
+                dyeMaterial.uniforms.velocityField.value = velocityFBOs.current[velocityIndex.current].texture
+                dyeMaterial.uniforms.dyeField.value = readDyeForUpdate.texture
+                quad.material = dyeMaterial
+                gl.setRenderTarget(writeDyeForUpdate)
+                gl.render(quad, camera)
+                dyeIndex.current = (dyeIndex.current + 1) % 2
+            }
         }
 
         // Run simulation loop multiple times based on speed
@@ -274,52 +363,7 @@ const FluidSimulationScene = ({ speed }: { speed: number }) => {
 
         for (let iter = 0; iter < iterations; iter++) {
             // --- Obstacle Logic ---
-            const targetCount = 12
-            const spawnRate = 0.05 // Probability per frame
-
-            // Spawn new obstacles
-            if (obstacles.current.length < targetCount && Math.random() < spawnRate) {
-                obstacles.current.push({
-                    x: 0.2 + Math.random() * 0.6, // Spawn in middle area
-                    y: 0.1 + Math.random() * 0.8,
-                    strength: 0.0,
-                    age: 0,
-                    lifetime: 400 + Math.random() * 200 // Frames
-                })
-            }
-
-            // Update obstacles
-            for (let i = obstacles.current.length - 1; i >= 0; i--) {
-                const obs = obstacles.current[i]
-                obs.age++
-
-                // Fade In / Fade Out Logic
-                const fadeTime = 100
-                if (obs.age < fadeTime) {
-                    obs.strength = obs.age / fadeTime // 0 -> 1
-                } else if (obs.age > obs.lifetime - fadeTime) {
-                    obs.strength = (obs.lifetime - obs.age) / fadeTime // 1 -> 0
-                } else {
-                    obs.strength = 1.0
-                }
-
-                if (obs.age >= obs.lifetime) {
-                    obstacles.current.splice(i, 1)
-                }
-            }
-
-            // Pack obstacle data for shader
-            obstacleCount.current = obstacles.current.length
-            for (let i = 0; i < MAX_OBSTACLES; i++) {
-                if (i < obstacles.current.length) {
-                    const obs = obstacles.current[i]
-                    obstacleData[i * 3] = obs.x
-                    obstacleData[i * 3 + 1] = obs.y
-                    obstacleData[i * 3 + 2] = obs.strength
-                } else {
-                    obstacleData[i * 3 + 2] = 0 // Zero strength for unused
-                }
-            }
+            updateObstacles()
 
             // --- Simulation Steps ---
 
@@ -327,8 +371,10 @@ const FluidSimulationScene = ({ speed }: { speed: number }) => {
             for (let i = 0; i < 2; i++) {
                 const readVelocity = velocityFBOs.current[velocityIndex.current]
                 const writeVelocity = velocityFBOs.current[(velocityIndex.current + 1) % 2]
+                const readDyeForVelocity = dyeFBOs.current[dyeIndex.current]
 
                 fluidMaterial.uniforms.velocityField.value = readVelocity.texture
+                fluidMaterial.uniforms.dyeField.value = readDyeForVelocity.texture
                 fluidMaterial.uniforms.obstacleCount.value = obstacleCount.current
 
                 quad.material = fluidMaterial
@@ -339,16 +385,15 @@ const FluidSimulationScene = ({ speed }: { speed: number }) => {
             }
 
             // Update dye field
-            const readDye = dyeFBOs.current[dyeIndex.current]
-            const writeDye = dyeFBOs.current[(dyeIndex.current + 1) % 2]
+            const readDyeForUpdate = dyeFBOs.current[dyeIndex.current]
+            const writeDyeForUpdate = dyeFBOs.current[(dyeIndex.current + 1) % 2]
             const currentVelocity = velocityFBOs.current[velocityIndex.current]
 
             dyeMaterial.uniforms.velocityField.value = currentVelocity.texture
-            dyeMaterial.uniforms.dyeField.value = readDye.texture
-            // No obstacle uniforms needed for dye anymore
+            dyeMaterial.uniforms.dyeField.value = readDyeForUpdate.texture
 
             quad.material = dyeMaterial
-            gl.setRenderTarget(writeDye)
+            gl.setRenderTarget(writeDyeForUpdate)
             gl.render(quad, camera)
 
             dyeIndex.current = (dyeIndex.current + 1) % 2
@@ -371,7 +416,7 @@ const FluidSimulationScene = ({ speed }: { speed: number }) => {
     )
 }
 
-export default function FluidSimulation({ speed = 1 }: { speed?: number }) {
+export default function FluidSimulation({ speed = 1, preWarm = 50 }: { speed?: number, preWarm?: number }) {
     return (
         <div className="fixed inset-0 z-[-1] pointer-events-none">
             <Canvas
@@ -380,7 +425,7 @@ export default function FluidSimulation({ speed = 1 }: { speed?: number }) {
                 gl={{ preserveDrawingBuffer: false, alpha: false, antialias: false }}
                 dpr={[1, 2]}
             >
-                <FluidSimulationScene speed={speed} />
+                <SimulationScene speed={speed} preWarm={preWarm} />
             </Canvas>
         </div>
     )
