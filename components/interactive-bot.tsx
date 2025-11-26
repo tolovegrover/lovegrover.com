@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from 'react'
 import { motion, useMotionValue, useTransform, useAnimationFrame, PanInfo, useSpring } from 'framer-motion'
 import ChargingDock from './charging-dock'
 
-type BotState = 'IDLE' | 'ROAMING' | 'INVESTIGATING' | 'SEEKING_DOCK' | 'CHARGING' | 'DRAGGING' | 'DEAD' | 'READING' | 'WAITING_FOR_EXPAND' | 'DIZZY'
+type BotState = 'IDLE' | 'ROAMING' | 'INVESTIGATING' | 'SEEKING_DOCK' | 'CHARGING' | 'DRAGGING' | 'DEAD' | 'READING' | 'WAITING_FOR_EXPAND' | 'DIZZY' | 'SEEKING_JAIL' | 'JAILED'
 
 export default function InteractiveBot() {
     const [isMounted, setIsMounted] = useState(false)
@@ -15,14 +15,25 @@ export default function InteractiveBot() {
     const [scanProgress, setScanProgress] = useState(0)
     const [isBlinking, setIsBlinking] = useState(false)
     const [expression, setExpression] = useState<'neutral' | 'happy' | 'sad' | 'squint' | 'bored' | 'amused' | 'sleeping' | 'dizzy'>('neutral')
+    const [isJailed, setIsJailed] = useState(false)
+
+    // --- CONSTANTS ---
+    // Jail is at Bottom-Left.
+    // Dock is at Bottom-Right (approx bottom-32).
+    // We align Jail Y with Dock Y.
+    const JAIL_COORDS = { bottom: 128, left: 32 } // 128px from bottom, 32px from left
+    const JAIL_SIZE = 96 // w-24 = 96px
+    const LOCK_BUTTON_POS = { bottom: 140, left: 140 } // Slightly right of jail (32 + 96 + 12)
 
     // Refs for Game Loop (to avoid stale closures without re-running effects)
     const botStateRef = useRef<BotState>('IDLE')
     const batteryRef = useRef(50)
+    const isJailedRef = useRef(false)
 
     // Sync refs with state
     useEffect(() => { botStateRef.current = botState }, [botState])
     useEffect(() => { batteryRef.current = battery }, [battery])
+    useEffect(() => { isJailedRef.current = isJailed }, [isJailed])
 
     // Comments for different types of links/content
     const [visitedPriorityItems, setVisitedPriorityItems] = useState<string[]>([])
@@ -172,6 +183,26 @@ export default function InteractiveBot() {
             // Game Loop (AI Logic) using Refs
             const currentState = botStateRef.current
             const currentBattery = batteryRef.current
+
+            // --- AI LOGIC ---
+
+            // Jail Logic
+            if (isJailedRef.current) {
+                if (currentState !== 'JAILED' && currentState !== 'SEEKING_JAIL' && currentState !== 'DRAGGING') {
+                    setBotState('SEEKING_JAIL')
+                    setSpeech("Going to jail...")
+
+                    // IMMEDIATE OVERRIDE: Force target to jail instantly
+                    const jailCenterX = JAIL_COORDS.left + (JAIL_SIZE / 2)
+                    const jailCenterY = window.innerHeight - JAIL_COORDS.bottom - (JAIL_SIZE / 2)
+                    targetPos.current = { x: jailCenterX, y: jailCenterY }
+                    lookTarget.current = null // Stop looking at other things
+                }
+                // If jailed, stay jailed.
+                // If seeking jail, continue.
+                // If dragging, allow it but it will return to jail on release.
+                return // Skip other logic
+            }
 
             // Battery Drain
             let newBattery = currentBattery
@@ -363,6 +394,7 @@ export default function InteractiveBot() {
 
                             // Reset after a moment
                             setTimeout(() => {
+                                if (isJailedRef.current) return // Guard
                                 setBotState('IDLE')
                                 setSpeech(null)
                             }, 3000)
@@ -416,6 +448,7 @@ export default function InteractiveBot() {
 
                         // Set a timeout to give up if we can't reach it
                         setTimeout(() => {
+                            if (isJailedRef.current) return // Guard
                             setBotState(prev => {
                                 if (prev === 'INVESTIGATING') {
                                     setSpeech(null)
@@ -482,10 +515,12 @@ export default function InteractiveBot() {
                                 // Recursive Reading Loop for Dynamic Speed & Sync
                                 const readNextWord = () => {
                                     if (botStateRef.current !== 'READING') return
+                                    if (isJailedRef.current) return // Guard
 
                                     if (wordIndex >= wordRanges.length) {
                                         setSpeech("I read it! Closing it now.")
                                         setTimeout(() => {
+                                            if (isJailedRef.current) return // Guard
                                             element.click()
                                             setBotState('IDLE')
                                             setSpeech("Done.")
@@ -551,21 +586,33 @@ export default function InteractiveBot() {
                             } else {
                                 setSpeech("Opening...")
                                 setBotState('WAITING_FOR_EXPAND') // Prevent further clicks
-                                targetElement.click()
+                                if (typeof targetElement.click === 'function') {
+                                    targetElement.click()
+                                } else {
+                                    const clickEvent = new MouseEvent('click', {
+                                        view: window,
+                                        bubbles: true,
+                                        cancelable: true
+                                    })
+                                    targetElement.dispatchEvent(clickEvent)
+                                }
 
                                 // Poll for expansion
                                 const checkExpand = setInterval(() => {
+                                    if (isJailedRef.current) { clearInterval(checkExpand); return } // Guard
                                     if (targetElement.getAttribute('data-expanded') === 'true') {
                                         clearInterval(checkExpand)
                                         setSpeech("Opened it!")
-                                        setTimeout(() => startReading(targetElement), 500)
+                                        setTimeout(() => {
+                                            if (!isJailedRef.current) startReading(targetElement)
+                                        }, 500)
                                     }
                                 }, 100)
 
                                 // Timeout fallback
                                 setTimeout(() => {
                                     clearInterval(checkExpand)
-                                    if (botStateRef.current === 'WAITING_FOR_EXPAND') {
+                                    if (botStateRef.current === 'WAITING_FOR_EXPAND' && !isJailedRef.current) {
                                         setBotState('IDLE')
                                     }
                                 }, 2000)
@@ -583,6 +630,7 @@ export default function InteractiveBot() {
 
                     // Reset to IDLE after a moment
                     setTimeout(() => {
+                        if (isJailedRef.current) return // Guard
                         setBotState(prev => prev === 'INVESTIGATING' ? 'IDLE' : prev)
                         setSpeech(null)
                         lookTarget.current = null
@@ -602,9 +650,23 @@ export default function InteractiveBot() {
                     targetPos.current = null // Clear target
                     lastActionTime.current = now
                 }
-            }
+            } else if (currentState === 'SEEKING_JAIL') {
+                // Move towards Jail
+                // Target is center of jail
+                // Jail Left = 32, Width = 96 -> Center X = 32 + 48 = 80
+                // Jail Bottom = 128, Height = 96 -> Center Y = window.innerHeight - 128 - 48 = window.innerHeight - 176
 
-            if (currentState === 'SEEKING_DOCK') {
+                const jailCenterX = JAIL_COORDS.left + (JAIL_SIZE / 2)
+                const jailCenterY = window.innerHeight - JAIL_COORDS.bottom - (JAIL_SIZE / 2)
+
+                // Game Loop only sets the target (like Dock logic)
+                targetPos.current = { x: jailCenterX, y: jailCenterY }
+            } else if (currentState === 'JAILED') {
+                // Stay put
+                velocity.current = { x: 0, y: 0 }
+                // Optional: Look sad
+                if (Math.random() < 0.01) setExpression('sad')
+            } else if (currentState === 'SEEKING_DOCK') {
                 // Dynamic Dock Finding
                 const dockElement = document.getElementById('charging-dock')
                 let dockX, dockY
@@ -649,31 +711,42 @@ export default function InteractiveBot() {
             const repulsionMargin = 50
             const repulsionForce = 0.2
 
-            if (currentState !== 'CHARGING' && currentState !== 'DRAGGING') {
+            if (currentState !== 'CHARGING' && currentState !== 'DRAGGING' && currentState !== 'JAILED') {
                 if (currentX < repulsionMargin) velocity.current.x += repulsionForce
                 if (currentX > window.innerWidth - repulsionMargin) velocity.current.x -= repulsionForce
                 if (currentY < repulsionMargin) velocity.current.y += repulsionForce
                 if (currentY > window.innerHeight - repulsionMargin - 80) velocity.current.y -= repulsionForce // Extra for bottom dock area
             }
 
-            if ((currentState === 'ROAMING' || currentState === 'INVESTIGATING' || currentState === 'SEEKING_DOCK' || currentState === 'READING') && targetPos.current) {
+            if ((currentState === 'ROAMING' || currentState === 'INVESTIGATING' || currentState === 'SEEKING_DOCK' || currentState === 'READING' || currentState === 'SEEKING_JAIL') && targetPos.current) {
                 const dx = targetPos.current.x - currentX
                 const dy = targetPos.current.y - currentY
                 const dist = Math.sqrt(dx * dx + dy * dy)
 
                 if (dist > 10) {
-                    const speed = currentState === 'SEEKING_DOCK' ? 0.15 : (currentState === 'INVESTIGATING' ? 0.12 : (currentState === 'READING' ? 0.2 : 0.05))
+                    const speed = currentState === 'SEEKING_DOCK' ? 0.15 : (currentState === 'INVESTIGATING' ? 0.12 : (currentState === 'READING' ? 0.2 : (currentState === 'SEEKING_JAIL' ? 0.3 : 0.05)))
                     velocity.current.x += (dx / dist) * speed
                     velocity.current.y += (dy / dist) * speed
+                } else if (currentState === 'SEEKING_JAIL') {
+                    // Arrival Logic (In Physics Loop for robustness)
+                    setBotState('JAILED')
+                    setSpeech("Locked up.")
+                    velocity.current = { x: 0, y: 0 }
+
+                    const jailCenterX = JAIL_COORDS.left + (JAIL_SIZE / 2)
+                    const jailCenterY = window.innerHeight - JAIL_COORDS.bottom - (JAIL_SIZE / 2)
+                    x.set(jailCenterX)
+                    y.set(jailCenterY)
+                    targetPos.current = null
                 }
-            } else if (currentState === 'WAITING_FOR_EXPAND' || currentState === 'DIZZY') {
+            } else if (currentState === 'WAITING_FOR_EXPAND' || currentState === 'DIZZY' || currentState === 'JAILED') {
                 // Just hover in place or look at the target
                 velocity.current.x *= 0.8
                 velocity.current.y *= 0.8
             }
 
             // Apply Velocity
-            if (currentState !== 'CHARGING' && currentState !== 'DRAGGING') {
+            if (currentState !== 'CHARGING' && currentState !== 'DRAGGING' && currentState !== 'JAILED') {
                 currentX += velocity.current.x
                 currentY += velocity.current.y
 
@@ -700,6 +773,14 @@ export default function InteractiveBot() {
 
                 currentX += (dockX - currentX) * 0.2
                 currentY += (dockY - currentY) * 0.2
+                velocity.current = { x: 0, y: 0 }
+            } else if (currentState === 'JAILED') {
+                // Snap to jail center
+                const jailCenterX = JAIL_COORDS.left + (JAIL_SIZE / 2)
+                const jailCenterY = window.innerHeight - JAIL_COORDS.bottom - (JAIL_SIZE / 2)
+
+                currentX += (jailCenterX - currentX) * 0.2
+                currentY += (jailCenterY - currentY) * 0.2
                 velocity.current = { x: 0, y: 0 }
             }
 
@@ -766,6 +847,9 @@ export default function InteractiveBot() {
                 stateY = -2 // Lift slightly
             } else if (currentState === 'CHARGING') {
                 stateRotate = -5
+            } else if (currentState === 'JAILED') {
+                stateRotate = 0
+                stateY = 0
             }
 
             // 4. Update MotionValues
@@ -956,6 +1040,75 @@ export default function InteractiveBot() {
     return (
         <>
             <ChargingDock />
+
+            {/* Jail / Cage Visuals - Absolute Positioning */}
+            <div
+                className="fixed z-0 pointer-events-none"
+                style={{
+                    bottom: JAIL_COORDS.bottom,
+                    left: JAIL_COORDS.left,
+                    width: JAIL_SIZE,
+                    height: JAIL_SIZE
+                }}
+            >
+                {/* Floor */}
+                <div className="absolute bottom-0 left-0 w-full h-4 bg-gray-800 rounded-full opacity-50 blur-sm" />
+
+                {/* Bars (Rise up when bot is fully inside) */}
+                <motion.div
+                    initial={{ height: 0, opacity: 0 }}
+                    animate={{
+                        height: botState === 'JAILED' ? '100%' : '0%',
+                        opacity: isJailed ? 1 : 0
+                    }}
+                    transition={{ duration: 0.5, delay: botState === 'JAILED' ? 0.2 : 0 }}
+                    className="absolute bottom-0 left-0 w-full bg-black/20 backdrop-blur-[1px] border-4 border-gray-800 rounded-lg overflow-hidden flex justify-evenly items-end"
+                >
+                    <div className="w-1 h-full bg-gray-700 shadow-md" />
+                    <div className="w-1 h-full bg-gray-700 shadow-md" />
+                    <div className="w-1 h-full bg-gray-700 shadow-md" />
+                    <div className="w-1 h-full bg-gray-700 shadow-md" />
+                </motion.div>
+            </div>
+
+            {/* Jail Button (Lock) - Absolute Positioning */}
+            <button
+                onClick={() => {
+                    const newJailed = !isJailed
+                    setIsJailed(newJailed)
+                    if (newJailed) {
+                        setBotState('SEEKING_JAIL')
+                        setSpeech("Oh no! Jail time!")
+                    } else {
+                        // Freedom Logic!
+                        setBotState('ROAMING')
+                        setExpression('happy')
+                        setSpeech("Freedom!")
+                        // Burst away
+                        velocity.current = { x: 8, y: -8 }
+                        setTimeout(() => setSpeech(null), 2000)
+                    }
+                }}
+                className={`fixed z-50 p-2 rounded-full transition-all duration-300 ${isJailed
+                    ? 'bg-red-500 text-white shadow-[0_0_15px_rgba(239,68,68,0.6)] scale-110'
+                    : 'bg-white/10 text-gray-400 hover:text-white hover:bg-white/20 backdrop-blur-md border border-white/20'
+                    }`}
+                style={{
+                    bottom: LOCK_BUTTON_POS.bottom,
+                    left: LOCK_BUTTON_POS.left
+                }}
+                title={isJailed ? "Unlock Bot" : "Lock Bot"}
+            >
+                {isJailed ? (
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-6 h-6">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 1 0-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 0 0 2.25-2.25v-6.75a2.25 2.25 0 0 0-2.25-2.25H6.75a2.25 2.25 0 0 0-2.25 2.25v6.75a2.25 2.25 0 0 0 2.25 2.25Z" />
+                    </svg>
+                ) : (
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 10.5V6.75a4.5 4.5 0 1 1 9 0v3.75M3.75 21.75h10.5a2.25 2.25 0 0 0 2.25-2.25v-6.75a2.25 2.25 0 0 0-2.25-2.25H3.75a2.25 2.25 0 0 0-2.25 2.25v6.75a2.25 2.25 0 0 0 2.25 2.25Z" />
+                    </svg>
+                )}
+            </button>
             <motion.div
                 drag
                 dragMomentum={false}
