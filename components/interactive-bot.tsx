@@ -6,7 +6,7 @@ import { motion, useMotionValue, useTransform, useAnimationFrame, PanInfo, useSp
 import FluidSimulation from './fluid-simulation'
 import ChargingDock from './charging-dock'
 
-type BotState = 'IDLE' | 'ROAMING' | 'INVESTIGATING' | 'SEEKING_DOCK' | 'CHARGING' | 'DRAGGING' | 'DEAD' | 'READING' | 'WAITING_FOR_EXPAND' | 'DIZZY' | 'SEEKING_JAIL' | 'JAILED' | 'CHAOS' | 'SCARED'
+type BotState = 'IDLE' | 'ROAMING' | 'INVESTIGATING' | 'SEEKING_DOCK' | 'CHARGING' | 'DRAGGING' | 'DEAD' | 'READING' | 'WAITING_FOR_EXPAND' | 'DIZZY' | 'SEEKING_JAIL' | 'JAILED' | 'CHAOS' | 'SCARED' | 'SEEKING_INTEREST' | 'LOW_BATTERY'
 
 export default function InteractiveBot() {
     const pathname = usePathname()
@@ -19,6 +19,14 @@ export default function InteractiveBot() {
     const [isBlinking, setIsBlinking] = useState(false)
     const [expression, setExpression] = useState<'neutral' | 'happy' | 'sad' | 'squint' | 'bored' | 'amused' | 'sleeping' | 'dizzy' | 'angry' | 'scared'>('neutral')
     const [isJailed, setIsJailed] = useState(false)
+
+    // Audio & Genie State
+    const [isMuted, setIsMuted] = useState(false)
+    const [showGenie, setShowGenie] = useState(false)
+    const showGenieRef = useRef(false) // Ref to prevent loop
+    const [genieState, setGenieState] = useState<'APPEARING' | 'TALKING' | 'BARGAINING' | 'UNLOCKING' | 'LEAVING'>('APPEARING')
+    const [genieSpeech, setGenieSpeech] = useState<string | null>(null)
+    const jailStartTime = useRef<number | null>(null)
 
     // --- CONSTANTS ---
     // Jail is at Bottom-Left.
@@ -80,6 +88,7 @@ export default function InteractiveBot() {
     const velocity = useRef({ x: 0, y: 0 })
     const isDragging = useRef(false)
     const targetPos = useRef<{ x: number, y: number } | null>(null)
+    const targetElement = useRef<HTMLElement | null>(null)
     const lastActionTime = useRef(0)
     const lookTarget = useRef<{ x: number, y: number } | null>(null)
 
@@ -163,6 +172,287 @@ export default function InteractiveBot() {
     }
     const eyeOffset = getEyeOffset()
 
+    // Audio Helper - Procedural Generation
+    const audioContextRef = useRef<AudioContext | null>(null)
+
+    const initAudio = () => {
+        if (!audioContextRef.current) {
+            audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)()
+        }
+        if (audioContextRef.current.state === 'suspended') {
+            audioContextRef.current.resume()
+        }
+        return audioContextRef.current
+    }
+
+    const playAudio = (soundName: string) => {
+        if (isMuted) return
+        const ctx = initAudio()
+        const now = ctx.currentTime
+
+        // Master Gain (Volume)
+        const masterGain = ctx.createGain()
+        masterGain.gain.setValueAtTime(0.3, now)
+        masterGain.connect(ctx.destination)
+
+        if (soundName === 'happy-beep') {
+            // R2-D2 style chirps
+            const osc = ctx.createOscillator()
+            osc.type = 'sine'
+            osc.frequency.setValueAtTime(800, now)
+            osc.frequency.exponentialRampToValueAtTime(1200, now + 0.1)
+            osc.frequency.exponentialRampToValueAtTime(600, now + 0.2)
+
+            const gain = ctx.createGain()
+            gain.gain.setValueAtTime(0, now)
+            gain.gain.linearRampToValueAtTime(1, now + 0.05)
+            gain.gain.exponentialRampToValueAtTime(0.01, now + 0.3)
+
+            osc.connect(gain)
+            gain.connect(masterGain)
+            osc.start(now)
+            osc.stop(now + 0.3)
+        } else if (soundName === 'sad-beep') {
+            // Sad descending slide
+            const osc = ctx.createOscillator()
+            osc.type = 'sawtooth'
+            osc.frequency.setValueAtTime(400, now)
+            osc.frequency.linearRampToValueAtTime(100, now + 0.6)
+
+            const gain = ctx.createGain()
+            gain.gain.setValueAtTime(0, now)
+            gain.gain.linearRampToValueAtTime(0.5, now + 0.1)
+            gain.gain.linearRampToValueAtTime(0, now + 0.6)
+
+            osc.connect(gain)
+            gain.connect(masterGain)
+            osc.start(now)
+            osc.stop(now + 0.6)
+        } else if (soundName === 'scared-beep') {
+            // Jittery FM
+            const osc = ctx.createOscillator()
+            osc.type = 'square'
+            osc.frequency.setValueAtTime(600, now)
+
+            // LFO for jitter
+            const lfo = ctx.createOscillator()
+            lfo.type = 'sawtooth'
+            lfo.frequency.value = 20
+            const lfoGain = ctx.createGain()
+            lfoGain.gain.value = 500
+            lfo.connect(lfoGain)
+            lfoGain.connect(osc.frequency)
+            lfo.start(now)
+            lfo.stop(now + 0.5)
+
+            const gain = ctx.createGain()
+            gain.gain.setValueAtTime(0.5, now)
+            gain.gain.exponentialRampToValueAtTime(0.01, now + 0.5)
+
+            osc.connect(gain)
+            gain.connect(masterGain)
+            osc.start(now)
+            osc.stop(now + 0.5)
+        } else if (soundName === 'coin') {
+            // High ping
+            const osc = ctx.createOscillator()
+            osc.type = 'sine'
+            osc.frequency.setValueAtTime(1200, now)
+            osc.frequency.exponentialRampToValueAtTime(2000, now + 0.1)
+
+            const gain = ctx.createGain()
+            gain.gain.setValueAtTime(0, now)
+            gain.gain.linearRampToValueAtTime(0.5, now + 0.05)
+            gain.gain.exponentialRampToValueAtTime(0.01, now + 0.5)
+
+            osc.connect(gain)
+            gain.connect(masterGain)
+            osc.start(now)
+            osc.stop(now + 0.5)
+        } else if (soundName === 'unlock') {
+            // Mechanical clunk
+            const osc = ctx.createOscillator()
+            osc.type = 'square'
+            osc.frequency.setValueAtTime(100, now)
+
+            const gain = ctx.createGain()
+            gain.gain.setValueAtTime(0.5, now)
+            gain.gain.exponentialRampToValueAtTime(0.01, now + 0.2)
+
+            osc.connect(gain)
+            gain.connect(masterGain)
+            osc.start(now)
+            osc.stop(now + 0.2)
+        } else if (soundName === 'poof' || soundName === 'genie-appear') {
+            // White Noise Burst
+            const bufferSize = ctx.sampleRate * 1.5 // 1.5 seconds
+            const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate)
+            const data = buffer.getChannelData(0)
+            for (let i = 0; i < bufferSize; i++) {
+                data[i] = Math.random() * 2 - 1
+            }
+
+            const noise = ctx.createBufferSource()
+            noise.buffer = buffer
+
+            const filter = ctx.createBiquadFilter()
+            filter.type = 'lowpass'
+            filter.frequency.setValueAtTime(1000, now)
+            filter.frequency.linearRampToValueAtTime(100, now + 1.5)
+
+            const gain = ctx.createGain()
+            gain.gain.setValueAtTime(0.5, now)
+            gain.gain.exponentialRampToValueAtTime(0.01, now + 1.5)
+
+            noise.connect(filter)
+            filter.connect(gain)
+            gain.connect(masterGain)
+            noise.start(now)
+        } else if (soundName === 'chaos-noise') {
+            // Low rumble + high screech
+            const osc1 = ctx.createOscillator()
+            osc1.type = 'sawtooth'
+            osc1.frequency.setValueAtTime(50, now)
+
+            const osc2 = ctx.createOscillator()
+            osc2.type = 'sawtooth'
+            osc2.frequency.setValueAtTime(800, now)
+            osc2.frequency.linearRampToValueAtTime(200, now + 2)
+
+            const gain = ctx.createGain()
+            gain.gain.setValueAtTime(0.3, now)
+            gain.gain.linearRampToValueAtTime(0, now + 2)
+
+            osc1.connect(gain)
+            osc2.connect(gain)
+            gain.connect(masterGain)
+            osc1.start(now)
+            osc2.start(now)
+            osc1.stop(now + 2)
+            osc2.stop(now + 2)
+        }
+    }
+
+    // TTS Helper for Genie
+    const speakGenie = (text: string) => {
+        if (isMuted) return
+        const utterance = new SpeechSynthesisUtterance(text)
+        utterance.pitch = 0.8 // Deeper voice
+        utterance.rate = 0.9 // Slightly slower
+        // Try to find a good voice
+        const voices = window.speechSynthesis.getVoices()
+        const preferredVoice = voices.find(v => v.name.includes('Google US English') || v.name.includes('Samantha'))
+        if (preferredVoice) utterance.voice = preferredVoice
+
+        window.speechSynthesis.speak(utterance)
+    }
+
+    const playSignatureSound = () => {
+        if (isMuted) return
+        const ctx = initAudio()
+        const now = ctx.currentTime
+        const masterGain = ctx.createGain()
+        masterGain.gain.setValueAtTime(0.2, now)
+        masterGain.connect(ctx.destination)
+
+        // Sequence of rapid chirps
+        const frequencies = [800, 1200, 600, 1500, 900]
+        const durations = [0.08, 0.05, 0.08, 0.1, 0.05]
+        let startTime = now
+
+        frequencies.forEach((freq, i) => {
+            const osc = ctx.createOscillator()
+            osc.type = i % 2 === 0 ? 'sine' : 'square'
+            osc.frequency.setValueAtTime(freq, startTime)
+            osc.frequency.exponentialRampToValueAtTime(freq * 1.2, startTime + durations[i] / 2)
+
+            const gain = ctx.createGain()
+            gain.gain.setValueAtTime(0, startTime)
+            gain.gain.linearRampToValueAtTime(1, startTime + 0.01)
+            gain.gain.exponentialRampToValueAtTime(0.01, startTime + durations[i])
+
+            osc.connect(gain)
+            gain.connect(masterGain)
+            osc.start(startTime)
+            osc.stop(startTime + durations[i])
+
+            startTime += durations[i] + 0.02 // Small gap
+        })
+    }
+
+    const playClickSound = () => {
+        if (isMuted) return
+        const ctx = initAudio()
+        const now = ctx.currentTime
+        const masterGain = ctx.createGain()
+        masterGain.gain.setValueAtTime(0.1, now)
+        masterGain.connect(ctx.destination)
+
+        // Beep-Boop (High -> Low)
+        const osc1 = ctx.createOscillator()
+        osc1.type = 'sine'
+        osc1.frequency.setValueAtTime(1200, now)
+        osc1.frequency.exponentialRampToValueAtTime(1200, now + 0.05)
+
+        const osc2 = ctx.createOscillator()
+        osc2.type = 'square'
+        osc2.frequency.setValueAtTime(600, now + 0.06)
+        osc2.frequency.exponentialRampToValueAtTime(600, now + 0.15)
+
+        const gain = ctx.createGain()
+        gain.gain.setValueAtTime(0, now)
+        gain.gain.linearRampToValueAtTime(1, now + 0.01)
+        gain.gain.setValueAtTime(0, now + 0.05)
+        gain.gain.setValueAtTime(1, now + 0.06)
+        gain.gain.linearRampToValueAtTime(0, now + 0.15)
+
+        osc1.connect(gain)
+        osc2.connect(gain)
+        gain.connect(masterGain)
+        osc1.start(now)
+        osc1.stop(now + 0.05)
+        osc2.start(now + 0.06)
+        osc2.stop(now + 0.15)
+    }
+
+    const playMoveSound = () => {
+        if (isMuted) return
+        const ctx = initAudio()
+        const now = ctx.currentTime
+        const masterGain = ctx.createGain()
+        masterGain.gain.setValueAtTime(0.1, now)
+        masterGain.connect(ctx.destination)
+
+        // Random Chatter (3-5 beeps)
+        const count = Math.floor(Math.random() * 3) + 3
+        let startTime = now
+
+        for (let i = 0; i < count; i++) {
+            const duration = Math.random() * 0.05 + 0.03
+            const freq = Math.random() * 1000 + 500
+            const type = Math.random() > 0.5 ? 'sine' : 'square'
+
+            const osc = ctx.createOscillator()
+            osc.type = type
+            osc.frequency.setValueAtTime(freq, startTime)
+            if (Math.random() > 0.5) {
+                osc.frequency.exponentialRampToValueAtTime(freq * (Math.random() * 0.5 + 0.5), startTime + duration)
+            }
+
+            const gain = ctx.createGain()
+            gain.gain.setValueAtTime(0, startTime)
+            gain.gain.linearRampToValueAtTime(1, startTime + 0.01)
+            gain.gain.exponentialRampToValueAtTime(0.01, startTime + duration)
+
+            osc.connect(gain)
+            gain.connect(masterGain)
+            osc.start(startTime)
+            osc.stop(startTime + duration)
+
+            startTime += duration + 0.02
+        }
+    }
+
     // Blinking Logic
     useEffect(() => {
         const blinkLoop = () => {
@@ -190,6 +480,42 @@ export default function InteractiveBot() {
 
             // --- AI LOGIC ---
 
+            // --- PURUSHARTHA MISSION LOGIC ---
+            // If on /stories, ALWAYS prioritize finding and opening the Purushartha card if it's not open.
+            // BUT: Respect Battery Life!
+            if (pathname === '/stories') {
+                const purusharthaCard = document.querySelector('[data-bot-priority="purushartha"]') as HTMLElement
+                if (purusharthaCard) {
+                    const isExpanded = purusharthaCard.getAttribute('data-expanded') === 'true'
+
+                    if (!isExpanded) {
+                        // MISSION: GO OPEN IT
+                        // Override everything else (unless jailed or dying OR SEEKING DOCK)
+                        if (currentState !== 'SEEKING_INTEREST' && currentState !== 'JAILED' && currentState !== 'DRAGGING' && currentState !== 'LOW_BATTERY' && currentState !== 'SEEKING_DOCK' && currentBattery > 20) {
+                            setBotState('SEEKING_INTEREST')
+                            setExpression('happy')
+                            setSpeech("Ooh! Purushartha!")
+                            playSignatureSound() // Signature sound!
+
+                            // Target the TEXT specifically
+                            const titleElement = purusharthaCard.querySelector('strong') || purusharthaCard
+                            const rect = titleElement.getBoundingClientRect()
+                            targetPos.current = {
+                                x: rect.left + rect.width / 2,
+                                y: rect.top + rect.height / 2
+                            }
+                            targetElement.current = titleElement as HTMLElement
+                            return // Stop thinking about other things
+                        }
+                    } else if (currentState !== 'READING' && currentState !== 'JAILED' && currentState !== 'DRAGGING' && currentState !== 'LOW_BATTERY' && currentState !== 'SEEKING_DOCK') {
+                        // It's open, so read it!
+                        // We rely on the existing reading logic, but we can nudge it here if needed.
+                        // For now, let the standard "find open card" logic pick it up, 
+                        // OR we can force reading state here too.
+                    }
+                }
+            }
+
             // Jail Logic
             if (isJailedRef.current) {
                 // Always enforce SEEKING_JAIL if not already there or jailed
@@ -205,6 +531,60 @@ export default function InteractiveBot() {
                     const jailCenterX = JAIL_COORDS.left + (JAIL_SIZE / 2)
                     const jailCenterY = window.innerHeight - JAIL_COORDS.bottom - (JAIL_SIZE / 2)
                     targetPos.current = { x: jailCenterX, y: jailCenterY }
+                }
+
+                // GENIE RESCUE LOGIC
+                if (isJailedRef.current && jailStartTime.current && !showGenieRef.current) {
+                    const timeInJail = Date.now() - jailStartTime.current
+                    if (timeInJail > 15000) { // 15 seconds (Fast Rescue!)
+                        setShowGenie(true)
+                        showGenieRef.current = true // Lock it
+                        setGenieState('APPEARING')
+                        playAudio('genie-appear')
+
+                        // Genie Sequence
+                        setTimeout(() => {
+                            setGenieState('TALKING')
+                            setGenieSpeech("Stuck again, huh?")
+                        }, 2000)
+
+                        setTimeout(() => {
+                            setGenieState('BARGAINING')
+                            setGenieSpeech("That'll be 50 credits.")
+                            playAudio('coin')
+
+                            // BB-8 Reply
+                            setSpeech("Beep Beep *&^^*#@$")
+                            playAudio('happy-beep')
+                            setTimeout(() => setSpeech(null), 2000)
+                        }, 5000)
+
+                        setTimeout(() => {
+                            setGenieState('UNLOCKING')
+                            setGenieSpeech("Unlocking...")
+                            playAudio('unlock')
+                        }, 8000)
+
+                        setTimeout(() => {
+                            setIsJailed(false) // FREE HIM!
+                            isJailedRef.current = false // Sync Ref immediately for physics
+                            setBotState('ROAMING') // Force movement
+                            velocity.current = { x: 10, y: -10 } // Run away FAST!
+                            targetPos.current = null // Clear jail target
+                            lastActionTime.current = Date.now() // Reset AI timer
+                            playAudio('happy-beep')
+                            setGenieState('LEAVING')
+                            setGenieSpeech("Poof!")
+                            playAudio('poof')
+                            jailStartTime.current = null // Reset timer
+                        }, 10000)
+
+                        setTimeout(() => {
+                            setShowGenie(false)
+                            showGenieRef.current = false // Unlock
+                            setGenieSpeech(null)
+                        }, 12000)
+                    }
                 }
 
                 // If jailed, stay jailed.
@@ -568,8 +948,6 @@ export default function InteractiveBot() {
                                         }, 2000)
                                         return
                                     }
-
-                                    const range = wordRanges[wordIndex]
 
                                     // Move to the exact word position
                                     const rect = range.getBoundingClientRect()
@@ -1040,7 +1418,29 @@ export default function InteractiveBot() {
                 // Snap to dock center
                 x.set(dockRect.left + dockRect.width / 2 - 32)
                 y.set(dockRect.top + dockRect.height / 2 - 32)
+                return // Exit early
             }
+        }
+
+        // Check if dropped near JAIL
+        const botRect = (event.target as HTMLElement).getBoundingClientRect()
+        const jailCenterX = JAIL_COORDS.left + (JAIL_SIZE / 2)
+        const jailCenterY = window.innerHeight - JAIL_COORDS.bottom - (JAIL_SIZE / 2)
+
+        const distToJail = Math.sqrt(
+            Math.pow(jailCenterX - (botRect.left + botRect.width / 2), 2) +
+            Math.pow(jailCenterY - (botRect.top + botRect.height / 2), 2)
+        )
+
+        if (distToJail < 100) {
+            setIsJailed(true)
+            setBotState('JAILED')
+            setSpeech("Oh no! Jail!")
+            playAudio('sad-beep')
+            jailStartTime.current = Date.now() // START THE TIMER!
+            // Snap to jail center
+            x.set(jailCenterX - 32)
+            y.set(jailCenterY - 32)
         }
 
         lastActionTime.current = Date.now() // Reset timer so he doesn't immediately run away
@@ -1111,6 +1511,78 @@ export default function InteractiveBot() {
 
             <ChargingDock />
 
+            {/* Genie (Smoke Spirit) */}
+            <AnimatePresence>
+                {showGenie && (
+                    <motion.div
+                        initial={{ opacity: 0, scale: 0, y: 50 }} // Rise from below
+                        animate={{
+                            opacity: 1,
+                            scale: genieState === 'LEAVING' ? 2 : 1, // Blast size
+                            y: (genieState === 'UNLOCKING' || genieState === 'LEAVING') ? 20 : 0, // Stay down
+                            x: (genieState === 'UNLOCKING' || genieState === 'LEAVING') ? (window.innerWidth / 2) - (JAIL_COORDS.left + JAIL_SIZE + 50) : 0 // Stay at center button
+                        }}
+                        exit={{ opacity: 0, scale: 3, filter: "blur(20px)" }} // POOF BLAST
+                        transition={{
+                            duration: genieState === 'LEAVING' ? 0.2 : 1, // Fast exit
+                            ease: "easeInOut"
+                        }}
+                        className="fixed z-50 pointer-events-none"
+                        style={{
+                            left: JAIL_COORDS.left + JAIL_SIZE + 20, // Right of jail
+                            bottom: JAIL_COORDS.bottom + 20, // Start height
+                            width: 40, // Mini Genie (1/3 size)
+                            height: 40
+                        }}
+                    >
+                        {/* Organic Smoke Particle System */}
+                        {[...Array(8)].map((_, i) => (
+                            <motion.div
+                                key={i}
+                                animate={{
+                                    y: [0, -5 - Math.random() * 10, 0], // Smaller movement
+                                    x: [0, (Math.random() - 0.5) * 10, 0],
+                                    scale: [1, 1.2 + Math.random() * 0.5, 1],
+                                    rotate: [0, (Math.random() - 0.5) * 60, 0],
+                                    opacity: [0.4, 0.7, 0.4]
+                                }}
+                                transition={{
+                                    duration: 3 + Math.random() * 2,
+                                    repeat: Infinity,
+                                    ease: "easeInOut",
+                                    delay: Math.random() * 2
+                                }}
+                                className={`absolute rounded-full blur-md mix-blend-screen ${i % 3 === 0 ? 'bg-blue-600/50' : i % 3 === 1 ? 'bg-cyan-400/50' : 'bg-indigo-500/50'
+                                    }`}
+                                style={{
+                                    inset: `${Math.random() * 20}%`,
+                                    width: `${50 + Math.random() * 50}%`,
+                                    height: `${50 + Math.random() * 50}%`,
+                                }}
+                            />
+                        ))}
+                        {/* Core Glow */}
+                        <motion.div
+                            animate={{ scale: [0.9, 1.1, 0.9], opacity: [0.6, 0.9, 0.6] }}
+                            transition={{ duration: 2, repeat: Infinity }}
+                            className="absolute inset-2 bg-white/40 blur-sm rounded-full mix-blend-overlay"
+                        />
+
+                        {/* Speech Bubble (Hide when leaving/unlocking) */}
+                        {genieSpeech && genieState !== 'UNLOCKING' && genieState !== 'LEAVING' && (
+                            <motion.div
+                                initial={{ opacity: 0, y: 10 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                exit={{ opacity: 0 }}
+                                className="absolute -top-10 left-1/2 -translate-x-1/2 bg-white/90 dark:bg-black/90 text-black dark:text-white px-2 py-1 rounded-lg text-[10px] font-bold whitespace-nowrap shadow-md border border-gray-200 dark:border-gray-700"
+                            >
+                                {genieSpeech}
+                                <div className="absolute bottom-[-4px] left-1/2 -translate-x-1/2 w-2 h-2 bg-white/90 dark:bg-black/90 rotate-45 border-b border-r border-gray-200 dark:border-gray-700"></div>
+                            </motion.div>
+                        )}
+                    </motion.div>
+                )}
+            </AnimatePresence>
             {/* Jail / Cage Visuals - Absolute Positioning */}
             <div
                 className="fixed z-0 pointer-events-none"
@@ -1146,19 +1618,16 @@ export default function InteractiveBot() {
                 {/* Lock/Unlock Button */}
                 <button
                     onClick={() => {
-                        const newJailed = !isJailed
-                        setIsJailed(newJailed)
-                        if (newJailed) {
-                            // LOCKING
-                            setBotState('SEEKING_JAIL')
-                            setSpeech("Oh no! Jail time!")
-                        } else {
-                            // UNLOCKING -> FREEDOM (No Chaos)
-                            setBotState('ROAMING')
+                        if (isJailed) {
+                            setIsJailed(false)
+                            playAudio('happy-beep')
                             setExpression('happy')
-                            setSpeech("Freedom!")
-                            velocity.current = { x: 5, y: -5 }
-                            setTimeout(() => setSpeech(null), 2000)
+                            jailStartTime.current = null
+                        } else {
+                            setIsJailed(true)
+                            playAudio('sad-beep')
+                            setExpression('sad')
+                            jailStartTime.current = Date.now()
                         }
                     }}
                     className={`p-3 rounded-full transition-all duration-300 shadow-sm hover:shadow-md active:scale-95 backdrop-blur-sm ${isJailed
@@ -1186,6 +1655,7 @@ export default function InteractiveBot() {
                         setBotState('SCARED')
                         setExpression('scared')
                         setSpeech("What's that sound?!")
+                        playAudio('scared-beep')
 
                         // After 2s -> Chaos
                         setTimeout(() => {
@@ -1193,6 +1663,7 @@ export default function InteractiveBot() {
                                 setBotState('CHAOS')
                                 setExpression('angry')
                                 setSpeech("AAHHH! CHAOS!")
+                                playAudio('chaos-noise')
                                 velocity.current = { x: (Math.random() - 0.5) * 20, y: (Math.random() - 0.5) * 20 }
 
                                 // After 8s -> Idle
@@ -1214,7 +1685,24 @@ export default function InteractiveBot() {
                         <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 13.5l10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75z" />
                     </svg>
                 </button>
-            </div>
+
+                {/* Mute Button */}
+                <button
+                    onClick={() => setIsMuted(!isMuted)}
+                    className="p-3 bg-black/80 text-white border-transparent rounded-full shadow-sm hover:bg-black hover:shadow-md transition-all active:scale-95 backdrop-blur-sm dark:bg-white/80 dark:text-black dark:hover:bg-white"
+                    title={isMuted ? "Unmute" : "Mute"}
+                >
+                    {isMuted ? (
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M17.25 9.75 19.5 12m0 0 2.25 2.25M19.5 12l2.25-2.25M19.5 12l-2.25 2.25m-10.5-6 4.75-4.75a.75.75 0 0 1 1.28.53v15.88a.75.75 0 0 1-1.28.53l-4.75-4.75H4.875a1.125 1.125 0 0 1-1.125-1.125v-4.5c0-.621.504-1.125 1.125-1.125h3.375Z" />
+                        </svg>
+                    ) : (
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M19.114 5.636a9 9 0 0 1 0 12.728M16.463 8.288a5.25 5.25 0 0 1 0 7.424M6.75 8.25l4.72-4.72a.75.75 0 0 1 1.28.53v15.88a.75.75 0 0 1-1.28.53l-4.72-4.72H4.51c-.88 0-1.704-.507-1.938-1.354A9.01 9.01 0 0 1 2.25 12c0-.83.112-1.633.322-2.396C2.806 8.756 3.63 8.25 4.51 8.25H6.75Z" />
+                        </svg>
+                    )}
+                </button>
+            </div >
             <motion.div
                 drag
                 dragMomentum={false}
