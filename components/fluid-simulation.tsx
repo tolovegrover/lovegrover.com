@@ -124,15 +124,15 @@ const FluidSimulationScene = ({ speed }: { speed: number }) => {
         uniform vec3 obstacles[${MAX_OBSTACLES}]; // x, y, strength
         varying vec2 vUv;
 
-        #define dt 0.15
-        #define vorticityThreshold 0.25
-        #define velocityThreshold 10.0
-        #define viscosityThreshold 0.6
+        #define dt 0.25
+        #define vorticityThreshold 0.8
+        #define velocityThreshold 20.0
+        #define viscosityThreshold 0.4
 
         void main() {
           vec2 uv = vUv;
           vec2 stepSize = 1.0 / resolution;
-          float k = 0.2, s = k / dt;
+          float k = 0.5, s = k / dt;
 
           vec4 fluidData = texture2D(velocityField, uv);
           vec4 fr = texture2D(velocityField, uv + vec2(stepSize.x, 0.0));
@@ -154,8 +154,8 @@ const FluidSimulationScene = ({ speed }: { speed: number }) => {
           vec2 uvHistory = uv - dt * fluidData.xy * stepSize;
           fluidData.xyw = texture2D(velocityField, uvHistory).xyw;
 
-          // Constant Flow Force (Left to Right) - Increased speed
-          vec2 extForce = vec2(0.005, 0.0);
+          // Constant Flow Force (Left to Right) - TURBO SPEED
+          vec2 extForce = vec2(0.015, 0.0);
 
           // Apply Obstacle Forces (Invisible Deflectors)
           for(int i = 0; i < ${MAX_OBSTACLES}; i++) {
@@ -168,18 +168,18 @@ const FluidSimulationScene = ({ speed }: { speed: number }) => {
             
             if (dist < radius) {
                 // Radial repulsion force
-                float force = (1.0 - dist / radius) * obs.z * 0.02; // obs.z is strength
+                float force = (1.0 - dist / radius) * obs.z * 0.05; // Increased repulsion
                 extForce += normalize(dir) * force;
             }
           }
 
           fluidData.xy += dt * (viscosityForce - densityInvariance + extForce);
-          fluidData.xy = max(vec2(0.0), abs(fluidData.xy) - 1e-4) * sign(fluidData.xy); // Decay
+          fluidData.xy = max(vec2(0.0), abs(fluidData.xy) - 1e-5) * sign(fluidData.xy); // Lower decay for more chaos
 
           fluidData.w = (fd.x - ft.x + fr.y - fl.y);
           vec2 vorticity = vec2(abs(ft.w) - abs(fd.w), abs(fl.w) - abs(fr.w));
           vorticity *= vorticityThreshold / (length(vorticity) + 1e-5) * fluidData.w;
-          fluidData.xy += vorticity;
+          fluidData.xy += vorticity * 2.0; // Double vorticity for swirls
 
           fluidData.y *= smoothstep(0.5, 0.48, abs(uv.y - 0.5));
           

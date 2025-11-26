@@ -47,6 +47,8 @@ export const viewport: Viewport = {
 
 import { FluidModeProvider } from '@/components/fluid-mode-context'
 import FluidBackground from '@/components/fluid-background'
+import InteractiveBot from '@/components/interactive-bot'
+import { ThemeProvider } from '@/components/theme-provider'
 
 export default function RootLayout({
   children,
@@ -54,8 +56,9 @@ export default function RootLayout({
   children: React.ReactNode
 }>) {
   return (
-    <html lang='en' className='overflow-x-hidden touch-manipulation'>
+    <html lang='en' className='overflow-x-hidden touch-manipulation' suppressHydrationWarning>
       <body
+        suppressHydrationWarning
         className={cn(
           sans.variable,
           serif.variable,
@@ -66,21 +69,24 @@ export default function RootLayout({
           'antialiased'
         )}
       >
-        <FluidModeProvider>
-          <FluidBackground />
-          <div className='fixed sm:hidden h-6 sm:h-10 md:h-14 w-full top-0 left-0 z-30 pointer-events-none content-fade-out' />
-          <div className='flex flex-col mobile:flex-row mx-auto max-w-screen-lg justify-center'>
-            <Navbar />
-            <main className='relative flex-1 max-w-2xl [contain:inline-size]'>
-              <div className='absolute w-full h-px opacity-50 bg-rurikon-border right-0 mobile:right-auto mobile:left-0 mobile:w-px mobile:h-full mobile:opacity-100 mix-blend-multiply' />
-              <ViewTransition name='crossfade'>
-                <article className='pl-0 pt-6 mobile:pt-0 mobile:pl-6 sm:pl-10 md:pl-14'>
-                  {children}
-                </article>
-              </ViewTransition>
-            </main>
-          </div>
-        </FluidModeProvider>
+        <ThemeProvider defaultTheme="system" storageKey="vite-ui-theme">
+          <FluidModeProvider>
+            <FluidBackground />
+            <div className='fixed sm:hidden h-6 sm:h-10 md:h-14 w-full top-0 left-0 z-30 pointer-events-none content-fade-out' />
+            <div className='flex flex-col mobile:flex-row mx-auto max-w-screen-lg justify-center'>
+              <Navbar />
+              <main className='relative flex-1 max-w-2xl [contain:inline-size]'>
+                <div className='absolute w-full h-px opacity-50 bg-rurikon-border right-0 mobile:right-auto mobile:left-0 mobile:w-px mobile:h-full mobile:opacity-100 mix-blend-multiply' />
+                <ViewTransition name='crossfade'>
+                  <article className='pl-0 pt-6 mobile:pt-0 mobile:pl-6 sm:pl-10 md:pl-14'>
+                    {children}
+                  </article>
+                </ViewTransition>
+              </main>
+            </div>
+            <InteractiveBot />
+          </FluidModeProvider>
+        </ThemeProvider>
         <Analytics />
       </body>
     </html>
