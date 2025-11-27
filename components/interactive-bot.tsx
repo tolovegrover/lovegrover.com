@@ -1199,8 +1199,8 @@ export default function InteractiveBot() {
                     dockX = rect.left + rect.width / 2 - 16
                     dockY = rect.top + rect.height / 2 - 16
                 } else {
-                    dockX = window.innerWidth - 140
-                    dockY = window.innerHeight - 140
+                    dockX = window.innerWidth - 60
+                    dockY = window.innerHeight - 168 // 128px (bottom-32) + 40px (half-height)
                 }
 
                 currentX += (dockX - currentX) * 0.2
@@ -1223,10 +1223,10 @@ export default function InteractiveBot() {
                 const size = 32 // Bot size
 
                 // Asymmetric Margins
-                const marginTop = 0
+                const marginTop = -10
                 const marginLeft = 0
                 const marginRight = 0
-                const marginBottom = 20 // Allow reaching bottom buttons
+                const marginBottom = 0 // Allow reaching bottom buttons
 
                 // Clamp X with margin
                 if (currentX < marginLeft) {
@@ -1520,8 +1520,8 @@ export default function InteractiveBot() {
                         animate={{
                             opacity: 1,
                             scale: genieState === 'LEAVING' ? 2 : 1, // Blast size
-                            y: (genieState === 'UNLOCKING' || genieState === 'LEAVING') ? 20 : 0, // Stay down
-                            x: (genieState === 'UNLOCKING' || genieState === 'LEAVING') ? (window.innerWidth / 2) - (JAIL_COORDS.left + JAIL_SIZE + 50) : 0 // Stay at center button
+                            y: (genieState === 'UNLOCKING' || genieState === 'LEAVING') ? 350 : 0, // Stay down
+                            x: (genieState === 'UNLOCKING' || genieState === 'LEAVING') ? (window.innerWidth / 2) - (JAIL_COORDS.left + JAIL_SIZE + 100) : 0 // Stay at center button
                         }}
                         exit={{ opacity: 0, scale: 3, filter: "blur(20px)" }} // POOF BLAST
                         transition={{
@@ -1531,9 +1531,9 @@ export default function InteractiveBot() {
                         className="fixed z-50 pointer-events-none"
                         style={{
                             left: JAIL_COORDS.left + JAIL_SIZE + 20, // Right of jail
-                            bottom: JAIL_COORDS.bottom + 20, // Start height
+                            bottom: JAIL_COORDS.bottom + 250, // Start height
                             width: 40, // Mini Genie (1/3 size)
-                            height: 40
+                            height: 80
                         }}
                     >
                         {/* Organic Smoke Particle System */}

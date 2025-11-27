@@ -3,7 +3,7 @@ import { motion } from 'framer-motion'
 
 export default function ChargingDock() {
     return (
-        <div id="charging-dock" className="fixed bottom-32 right-32 w-20 h-20 z-0">
+        <div id="charging-dock" className="fixed bottom-32 right-4 w-20 h-20 z-0">
             {/* Base Plate - Sleek Glassmorphism (Half Size) */}
             <div className="relative w-14 h-14">
                 {/* Floor Mat */}
